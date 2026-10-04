@@ -345,7 +345,13 @@ details summary{cursor:pointer;font-weight:600}
         </div>
         <div class="row">
           <label class="f">Max stop (points)<input id="maxStop" type="number" min="0.25" step="0.25" inputmode="decimal" value="25"></label>
+          <label class="f">Max stop from<select id="msMode"><option value="dd">From drawdown</option><option value="fixed">Fixed points</option></select></label>
         </div>
+        <div class="row">
+          <label class="f">Trailing drawdown ($)<input id="ddAmt" type="number" min="0" step="50" inputmode="decimal" placeholder="e.g. 2500"></label>
+          <label class="f">Max loss per trade (% of drawdown)<input id="ddPct" type="number" min="0.1" step="0.5" inputmode="decimal" value="5"></label>
+        </div>
+        <p class="msn" id="msInfo" aria-live="polite"></p>
       </section>
 
       <section class="card">
@@ -700,9 +706,28 @@ function marketTags(){
 /* ---------- Max stop rule (display only: never changes the plan) ---------- */
 function maxStop(){const v=parseFloat(load("sc-max-stop",25));return v>0?v:25}
 function fmtPts(x){return String(+(+x).toFixed(2))}
-function msInfo(e,s){e=e==null||e===""?NaN:Number(e);s=s==null||s===""?NaN:Number(s);if(!Number.isFinite(e)||!Number.isFinite(s)||e===s)return null;const pts=Math.abs(e-s),mx=maxStop(),over=pts>mx+1e-9;
-  return {pts,over,text:over?"Stop is "+fmtPts(pts)+" pts — over your "+fmtPts(mx)+" pt max. Too wide for your rule: skip or wait for a tighter setup.":"Stop "+fmtPts(pts)+" pts (max "+fmtPts(mx)+")"}}
-function msUpdate(p){const m=p?msInfo(p.entry,p.stop):null;["msSig","msPlan"].forEach(id=>{const el=$(id);if(!el)return;el.hidden=!m;if(m){el.className="msn"+(m.over?" over":"");el.textContent=(m.over?"⚠ ":"")+m.text}})}
+const MSK="sc-",GET=(k,d)=>load(k,d),SET=(k,v)=>save(k,v);
+/* trailing-drawdown rule: max $ per trade = drawdown x %; max stop pts = max $ / (point value x contracts) */
+const msUsd=x=>{x=+x;return "$"+(Math.abs(x-Math.round(x))<0.005?Math.round(x).toLocaleString("en-US"):x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))};
+function msCfg(){const dd=parseFloat(GET(MSK+"dd","")),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
+  return {dd:dd>0?dd:0,pct:pct>0?pct:5,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
+function msLimit(pv,qty){const c=msCfg(),q=Math.max(1,Math.floor(+qty)||1);pv=+pv;
+  if(c.dd>0&&c.mode!=="fixed"&&pv>0){const maxD=c.dd*c.pct/100;return {mode:"dd",pts:maxD/(pv*q),maxD,q,pv,pct:c.pct,dd:c.dd}}
+  return {mode:"fixed",pts:c.fixed,maxD:pv>0?c.fixed*pv*q:null,q,pv,pct:c.pct,dd:c.dd}}
+function msLimitLine(pv,qty,sym){const L=msLimit(pv,qty),c=msCfg();
+  if(L.mode==="dd")return `Max loss ${msUsd(L.maxD)} (${fmtPts(L.pct)}% of ${msUsd(L.dd)}) = ${fmtPts(L.pts)} pts on ${sym||"this contract"} ×${L.q}`;
+  return `Fixed max stop: ${fmtPts(L.pts)} pts`+(c.mode==="dd"&&!(c.dd>0)?" (enter your trailing drawdown to use the drawdown rule)":c.dd>0&&!(+pv>0)?" (no point value for this contract)":"")}
+function msInfo(e,s,pv,qty){e=parseFloat(e);s=parseFloat(s);if(!isFinite(e)||!isFinite(s)||e===s)return null;
+  const pts=Math.abs(e-s),L=msLimit(pv,qty),over=pts>L.pts+1e-9,stopD=+pv>0?pts*pv*L.q:null;
+  const text=L.mode==="dd"
+    ?(over?`Stop is ${fmtPts(pts)} pts (${msUsd(stopD)}) — over your max of ${fmtPts(L.pts)} pts (${msUsd(L.maxD)}, ${fmtPts(L.pct)}% of drawdown). Too wide: skip or wait for a tighter setup.`
+          :`Stop ${fmtPts(pts)} pts (${msUsd(stopD)}) — within max ${fmtPts(L.pts)} pts (${msUsd(L.maxD)})`)
+    :(over?`Stop is ${fmtPts(pts)} pts — over your ${fmtPts(L.pts)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(L.pts)})`);
+  return {pts,over,text,maxPts:L.pts,maxD:L.maxD,mode:L.mode}}
+function msPV(){const I=inst();return I&&I.tick?I.tv/I.tick:0}
+function msUpdate(p){const pv=msPV(),mt=p?metrics(p):null,q=mt&&mt.qty>0?mt.qty:1;const m=p?msInfo(p.entry,p.stop,pv,q):null;
+  ["msSig","msPlan"].forEach(id=>{const el=$(id);if(!el)return;el.hidden=!m;if(m){el.className="msn"+(m.over?" over":"");el.textContent=(m.over?"⚠ ":"")+m.text}});
+  const inf=$("msInfo");if(inf)inf.textContent=msLimitLine(pv,q,settings.inst)}
 function render(){
   const g=grade();
   $("verdict").className="card verdict "+(g.cls||"");
@@ -1234,6 +1259,13 @@ function importRead(text){
 {const ms=$("maxStop");ms.value=fmtPts(maxStop());
   ms.addEventListener("input",()=>{const v=parseFloat(ms.value);if(v>0){save("sc-max-stop",v);msUpdate(S.plan)}});
   ms.addEventListener("change",()=>{if(!(parseFloat(ms.value)>0))ms.value=fmtPts(maxStop())});}
+{const dd=$("ddAmt"),pc=$("ddPct"),md=$("msMode");
+  const sync=()=>{const c=msCfg();dd.value=c.dd>0?String(c.dd):"";pc.value=fmtPts(c.pct);md.value=c.mode||(c.dd>0?"dd":"fixed")};sync();
+  dd.addEventListener("input",()=>{const v=parseFloat(dd.value);SET(MSK+"dd",v>0?v:"");if(!GET(MSK+"ms-mode",null))md.value=v>0?"dd":"fixed";msUpdate(S.plan)});
+  pc.addEventListener("input",()=>{const v=parseFloat(pc.value);if(v>0){SET(MSK+"dd-pct",v);msUpdate(S.plan)}});
+  pc.addEventListener("change",()=>{if(!(parseFloat(pc.value)>0))pc.value=fmtPts(msCfg().pct)});
+  md.addEventListener("change",()=>{SET(MSK+"ms-mode",md.value);msUpdate(S.plan)});}
+
 $("importBtn").addEventListener("click",()=>importRead($("importText").value));
 $("importClear").addEventListener("click",()=>{$("importText").value="";lastImported="";impLen=0;importMsg("")});
 let impT=null,impLen=0;
@@ -1312,8 +1344,8 @@ const v2Side=x=>x.dir==="long"||x.dir==="short"?x.dir:null;
 function v2Row(x){const w=V2.when(x.t),f=x.ftfc||{};
   return {saved_at:w.iso,date:w.date,time:w.time,symbol:x.symbol,timeframe:x.tf,setup:x.setup,setup_group:V2.group(x.setup),direction:x.dir,signal:x.sig,grade:x.grade,
     entry:x.entry,stop:x.stop,target1:x.t1,ftfc_marked:f.known==null?"":f.known,ftfc_green:f.g==null?"":f.g,ftfc_red:f.r==null?"":f.r,outcome:x.outcome,note:x.note,
-    ...(ms=>({stop_pts:ms?+ms.pts.toFixed(2):"",over_max_stop:ms?ms.over:""}))(msInfo(x.entry,x.stop))}}
-const V2COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","signal","grade","entry","stop","target1","ftfc_marked","ftfc_green","ftfc_red","outcome","note","stop_pts","over_max_stop"];
+    ...(ms=>({stop_pts:ms?+ms.pts.toFixed(2):"",over_max_stop:ms?ms.over:"",max_stop_pts:ms?+ms.maxPts.toFixed(2):"",max_loss_dollars:ms&&ms.maxD!=null?+ms.maxD.toFixed(2):""}))(msInfo(x.entry,x.stop,(I=>I&&I.tick?I.tv/I.tick:0)(INST[String(x.symbol||"").toUpperCase().replace(/1!$/,"")]),1))}}
+const V2COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","signal","grade","entry","stop","target1","ftfc_marked","ftfc_green","ftfc_red","outcome","note","stop_pts","over_max_stop","max_stop_pts","max_loss_dollars"];
 function v2ExportJSON(){if(!v2log.length){V2.toast("No logged reads to export yet");return}
   V2.download(JSON.stringify({source:"strat-command",kind:"log",version:2,exported_at:new Date().toISOString(),count:v2log.length,items:v2log.map(x=>Object.assign(v2Row(x),{raw:x}))},null,2),"strat-command-log-"+V2.stamp()+".json","application/json")}
 function v2ExportCSV(){if(!v2log.length){V2.toast("No logged reads to export yet");return}

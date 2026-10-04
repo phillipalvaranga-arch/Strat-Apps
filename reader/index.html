@@ -516,7 +516,11 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
           <label class="f">Stop loss<input type="number" id="rStop" step="0.25" placeholder="from your trade plan"></label>
           <label class="f">Take profit 1<input type="number" id="rT1" step="0.25" placeholder="from your trade plan"></label>
           <label class="f">Take profit 2<input type="number" id="rT2" step="0.25" placeholder="from your trade plan"></label>
-          <label class="f full">Max stop (points)<input type="number" id="rMaxStop" min="0.25" step="0.25" inputmode="decimal" placeholder="25"></label>
+          <label class="f">Trailing drawdown ($)<input type="number" id="rDD" min="0" step="50" inputmode="decimal" placeholder="e.g. 2500"></label>
+          <label class="f">Max loss per trade (% of drawdown)<input type="number" id="rDDPct" min="0.1" step="0.5" inputmode="decimal" value="5"></label>
+          <label class="f">Max stop from<select id="rMSMode"><option value="dd">From drawdown</option><option value="fixed">Fixed points</option></select></label>
+          <label class="f">Max stop (points)<input type="number" id="rMaxStop" min="0.25" step="0.25" inputmode="decimal" placeholder="25"></label>
+          <div class="f full msn" id="rMSInfo" style="margin:0" aria-live="polite"></div>
           <label class="f full">Max risk per trade: <b id="rMaxLbl">$150</b>
             <input type="range" id="rMax" min="25" max="1000" step="25" value="150" style="padding:0">
           </label>
@@ -867,12 +871,31 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
   /* ---------- Max stop rule (display only: never changes the plan) ---------- */
   const maxStop=()=>{const v=parseFloat(store.get("strat-max-stop",25));return v>0?v:25};
   const fmtPts=x=>String(+(+x).toFixed(2));
-  function msInfo(e,s){e=numOf(e);s=numOf(s);if(e==null||s==null||e===s)return null;const pts=Math.abs(e-s),mx=maxStop(),over=pts>mx+1e-9;
-    return {pts,over,text:over?`Stop is ${fmtPts(pts)} pts — over your ${fmtPts(mx)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(mx)})`}}
-  function msHTML(e,s){const m=msInfo(e,s);return m?`<div class="msn${m.over?" over":""}" data-e="${numOf(e)}" data-s="${numOf(s)}" role="note">${m.over?icon("alert")+" ":""}${esc(m.text)}</div>`:""}
+  const MSK="strat-",GET=(k,d)=>store.get(k,d),SET=(k,v)=>store.set(k,v);
+  /* trailing-drawdown rule: max $ per trade = drawdown x %; max stop pts = max $ / (point value x contracts) */
+  const msUsd=x=>{x=+x;return "$"+(Math.abs(x-Math.round(x))<0.005?Math.round(x).toLocaleString("en-US"):x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))};
+  function msCfg(){const dd=parseFloat(GET(MSK+"dd","")),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
+    return {dd:dd>0?dd:0,pct:pct>0?pct:5,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
+  function msLimit(pv,qty){const c=msCfg(),q=Math.max(1,Math.floor(+qty)||1);pv=+pv;
+    if(c.dd>0&&c.mode!=="fixed"&&pv>0){const maxD=c.dd*c.pct/100;return {mode:"dd",pts:maxD/(pv*q),maxD,q,pv,pct:c.pct,dd:c.dd}}
+    return {mode:"fixed",pts:c.fixed,maxD:pv>0?c.fixed*pv*q:null,q,pv,pct:c.pct,dd:c.dd}}
+  function msLimitLine(pv,qty,sym){const L=msLimit(pv,qty),c=msCfg();
+    if(L.mode==="dd")return `Max loss ${msUsd(L.maxD)} (${fmtPts(L.pct)}% of ${msUsd(L.dd)}) = ${fmtPts(L.pts)} pts on ${sym||"this contract"} ×${L.q}`;
+    return `Fixed max stop: ${fmtPts(L.pts)} pts`+(c.mode==="dd"&&!(c.dd>0)?" (enter your trailing drawdown to use the drawdown rule)":c.dd>0&&!(+pv>0)?" (no point value for this contract)":"")}
+  function msInfo(e,s,pv,qty){e=parseFloat(e);s=parseFloat(s);if(!isFinite(e)||!isFinite(s)||e===s)return null;
+    const pts=Math.abs(e-s),L=msLimit(pv,qty),over=pts>L.pts+1e-9,stopD=+pv>0?pts*pv*L.q:null;
+    const text=L.mode==="dd"
+      ?(over?`Stop is ${fmtPts(pts)} pts (${msUsd(stopD)}) — over your max of ${fmtPts(L.pts)} pts (${msUsd(L.maxD)}, ${fmtPts(L.pct)}% of drawdown). Too wide: skip or wait for a tighter setup.`
+            :`Stop ${fmtPts(pts)} pts (${msUsd(stopD)}) — within max ${fmtPts(L.pts)} pts (${msUsd(L.maxD)})`)
+      :(over?`Stop is ${fmtPts(pts)} pts — over your ${fmtPts(L.pts)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(L.pts)})`);
+    return {pts,over,text,maxPts:L.pts,maxD:L.maxD,mode:L.mode}}
+
+  function msHTML(e,s,pv,q){const m=msInfo(e,s,pv,q);return m?`<div class="msn${m.over?" over":""}" data-e="${parseFloat(e)}" data-s="${parseFloat(s)}" data-pv="${+pv||""}" data-q="${+q||1}" role="note">${m.over?icon("alert")+" ":""}${esc(m.text)}</div>`:""}
   function msRefresh(){
-    document.querySelectorAll(".msn[data-e]").forEach(el=>{const m=msInfo(el.dataset.e,el.dataset.s);if(!m)return;el.className="msn"+(m.over?" over":"");el.innerHTML=(m.over?icon("alert")+" ":"")+esc(m.text)});
-    const n=$("rMaxStopNote");if(n){const m=msInfo(num("rEntry"),num("rStop"));n.hidden=!m;if(m){n.className="msn"+(m.over?" over":"");n.innerHTML=(m.over?icon("alert")+" ":"")+esc(m.text)}}
+    document.querySelectorAll(".msn[data-e]").forEach(el=>{const m=msInfo(el.dataset.e,el.dataset.s,el.dataset.pv,el.dataset.q);if(!m)return;el.className="msn"+(m.over?" over":"");el.innerHTML=(m.over?icon("alert")+" ":"")+esc(m.text)});
+    const o=$("rInst")&&$("rInst").selectedOptions[0],pv=o?+o.value:0,sym=o?o.dataset.sym:"",q=parseInt($("rQty")&&$("rQty").textContent,10)||1;
+    const n=$("rMaxStopNote");if(n){const m=msInfo(num("rEntry"),num("rStop"),pv,q);n.hidden=!m;if(m){n.className="msn"+(m.over?" over":"");n.innerHTML=(m.over?icon("alert")+" ":"")+esc(m.text)}}
+    const inf=$("rMSInfo");if(inf)inf.textContent=msLimitLine(pv,q,sym);
   }
   function plan(r){
     const sym=r.symbol||$("sym").value,pv=PV[sym]||null,side=sideOf(r),d=side==="long"?1:-1;
@@ -890,7 +913,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     return `<div class="tplan">
       <div class="tp-head"><span>${icon(side==="long"?"up":"down")} ${r.example?"EXAMPLE ":""}TRADE PLAN · ${side==="long"?"LONG (BUY)":"SHORT (SELL)"} ${esc(P.sym)}</span><small>${numOf(r.last_price)!=null?"Last price on chart: "+fmt(numOf(r.last_price)):""}</small></div>
       <div class="tp-row entry"><div class="tp-k">ENTER<small>${esc(order)}</small></div><div class="tp-p"${e==null&&r.entry&&r.entry!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${e==null&&r.entry&&r.entry!=="–"?"price set when the trigger candle forms":fmt(e)}</div><div class="tp-d">${esc(r.entry)}</div></div>
-      <div class="tp-row stop"><div class="tp-k">STOP LOSS<small>stop ${side==="long"?"sell":"buy"}</small></div><div class="tp-p"${P.s==null&&r.stop&&r.stop!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${P.s==null&&r.stop&&r.stop!=="–"?"set with the entry":fmt(P.s)}</div><div class="tp-d">${risk>0?`<b>−${risk.toFixed(2)} pts</b>${pv?` · −${dol(risk)}/contract`:""}<br>`:""}${esc(r.stop)}${msHTML(P.e,P.s)}</div></div>
+      <div class="tp-row stop"><div class="tp-k">STOP LOSS<small>stop ${side==="long"?"sell":"buy"}</small></div><div class="tp-p"${P.s==null&&r.stop&&r.stop!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${P.s==null&&r.stop&&r.stop!=="–"?"set with the entry":fmt(P.s)}</div><div class="tp-d">${risk>0?`<b>−${risk.toFixed(2)} pts</b>${pv?` · −${dol(risk)}/contract`:""}<br>`:""}${esc(r.stop)}${msHTML(P.e,P.s,P.pv,P.qty)}</div></div>
       ${tgt(P.t1,"TAKE PROFIT 1",r.target1)}${tgt(P.t2,"TAKE PROFIT 2",r.target2)}
       <div class="tp-foot"><span>${!have?(r.source==="pasted"?(r.entry&&r.entry!=="–"?"Claude gave the entry as a rule, not a price. Wait for that candle, then read its high and low off your chart (or send a new screenshot).":"This reading has no exact prices. Ask Claude for entry, stop and target numbers, or type them in Risk calc."):"Couldn't read exact prices from the axis. Type them in Risk calc."):P.qty>0?`Size: <b>${P.qty} contract${P.qty>1?"s":""}</b>${r.contracts>0?"":" (max your risk allows)"} · risk ${dol(risk*P.qty)}`:P.qty===0?'<span style="color:var(--down)">Stop is too wide for your max risk. Skip or tighten.</span>':""}</span>
         <span class="row"><button type="button" class="sm" id="copyPlan">${icon("copy")}Copy plan</button><button type="button" class="sm" id="planRisk">${icon("calc")}Open in Risk calc</button></span></div>
@@ -1365,8 +1388,15 @@ ${text.slice(0,20000)}
   {const ms=$("rMaxStop");if(ms){ms.value=fmtPts(maxStop());
     ms.addEventListener("input",()=>{const v=parseFloat(ms.value);if(v>0){store.set("strat-max-stop",v);msRefresh()}});
     ms.addEventListener("change",()=>{if(!(parseFloat(ms.value)>0))ms.value=fmtPts(maxStop())})}}
-  function calcRisk(){
-    msRefresh();
+  {const dd=$("rDD"),pc=$("rDDPct"),md=$("rMSMode");
+    const sync=()=>{const c=msCfg();dd.value=c.dd>0?String(c.dd):"";pc.value=fmtPts(c.pct);md.value=c.mode||(c.dd>0?"dd":"fixed")};sync();
+    dd.addEventListener("input",()=>{const v=parseFloat(dd.value);SET(MSK+"dd",v>0?v:"");if(!GET(MSK+"ms-mode",null))md.value=v>0?"dd":"fixed";msRefresh()});
+    pc.addEventListener("input",()=>{const v=parseFloat(pc.value);if(v>0){SET(MSK+"dd-pct",v);msRefresh()}});
+    pc.addEventListener("change",()=>{if(!(parseFloat(pc.value)>0))pc.value=fmtPts(msCfg().pct)});
+    md.addEventListener("change",()=>{SET(MSK+"ms-mode",md.value);msRefresh()});}
+
+  function calcRisk(){try{return calcRisk0()}finally{msRefresh()}}
+  function calcRisk0(){
     const pv=+$("rInst").value,side=getSide(),e=num("rEntry"),s=num("rStop"),t1=num("rT1"),t2=num("rT2"),mx=+$("rMax").value;
     $("rMaxLbl").textContent=money(mx);
     {const o=$("rInst").selectedOptions[0],k=o.dataset.kind;$("rKind").textContent=`${k.toUpperCase()} · ${o.dataset.sym}`;$("rKind").style.color=$("rKind").style.borderColor=k==="Micro"?"var(--up)":k==="Mini"?"var(--accent)":"var(--down)";$("rKind").title=k==="Micro"?"Micro: 1/10 the size of the mini":k==="Mini"?"E-mini: 10x a micro":"Full-size: 10x a micro gold";}
@@ -1508,7 +1538,7 @@ ${text.slice(0,20000)}
       ${j.thumb?`<img src="${j.thumb}" alt="" style="width:100%;border-radius:6px;margin-bottom:10px">`:""}
       <h3 style="font-family:var(--display);margin:0">${esc(j.headline)}</h3><p style="color:var(--muted);margin:4px 0">${esc(j.summary)}</p>
       <p style="font-family:var(--mono);font-size:.85rem;margin:6px 0">${(j.sequence||[]).join("  ")} · ${esc(j.setup)}</p>
-      <p style="font-size:.9rem;margin:4px 0">${j.contracts?`<b>Contracts:</b> ${esc(j.contracts)}<br>`:""}<b>Entry:</b> ${esc(j.entry)}<br><b>Stop:</b> ${esc(j.stop)}<br><b>T1:</b> ${esc(j.target1)}</p>${msHTML(j.entry_price,j.stop_price)}
+      <p style="font-size:.9rem;margin:4px 0">${j.contracts?`<b>Contracts:</b> ${esc(j.contracts)}<br>`:""}<b>Entry:</b> ${esc(j.entry)}<br><b>Stop:</b> ${esc(j.stop)}<br><b>T1:</b> ${esc(j.target1)}</p>${msHTML(j.entry_price,j.stop_price,PV[j.symbol],j.contracts||1)}
       <p class="label" style="margin-top:12px">How did it go?</p>
       <div class="outcome">${[["win","Win","check"],["loss","Loss","x"],["be","Breakeven","flat"],["skip","Skipped","pause"],["open","Open","wave"]].map(([k,t,ic])=>`<button type="button" class="sm" data-o="${k}" style="${j.outcome===k?"border-color:var(--accent);color:var(--accent)":""}">${icon(ic)}${t}</button>`).join("")}</div>
       <label class="f">What I learned<textarea id="jNote" rows="3" placeholder="e.g. Entered before the trigger. Wait for the break next time.">${esc(j.note)}</textarea></label>
@@ -1553,7 +1583,7 @@ ${text.slice(0,20000)}
       entry:j.entry||"",entry_price:numOf(j.entry_price),stop:j.stop||"",stop_price:numOf(j.stop_price),
       target1:j.target1||"",target1_price:numOf(j.target1_price),target2:j.target2||"",target2_price:numOf(j.target2_price),
       contracts:j.contracts||"",outcome:j.outcome||"",note:j.note||"",headline:j.headline||"",
-      ...(m=>({stop_pts:m?+m.pts.toFixed(2):null,over_max_stop:m?m.over:null}))(msInfo(j.entry_price,j.stop_price))};
+      ...(m=>({stop_pts:m?+m.pts.toFixed(2):null,over_max_stop:m?m.over:null,max_stop_pts:m?+m.maxPts.toFixed(2):null,max_loss_dollars:m&&m.maxD!=null?+m.maxD.toFixed(2):null}))(msInfo(j.entry_price,j.stop_price,PV[j.symbol],j.contracts||1))};
   }
   function downloadText(text,filename,type){
     const blob=new Blob([text],{type});
@@ -1568,7 +1598,7 @@ ${text.slice(0,20000)}
       reads:journal.map(j=>Object.assign(readRow(j),{full_read:j}))};
     downloadText(JSON.stringify(out,null,2),`strat-journal-${stamp()}.json`,"application/json");
   }
-  const CSV_COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","side","grade","trade_quality","verdict","signal_at_save","entry","entry_price","stop","stop_price","target1","target1_price","target2","target2_price","contracts","outcome","note","headline","stop_pts","over_max_stop"];
+  const CSV_COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","side","grade","trade_quality","verdict","signal_at_save","entry","entry_price","stop","stop_price","target1","target1_price","target2","target2_price","contracts","outcome","note","headline","stop_pts","over_max_stop","max_stop_pts","max_loss_dollars"];
   function csvCell(v){
     if(v==null)return "";
     if(typeof v==="number")return String(v);
