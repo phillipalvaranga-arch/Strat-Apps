@@ -92,6 +92,8 @@ button.go{background:var(--accent);color:var(--on-accent);border-color:var(--acc
 button.sm{padding:7px 11px;font-size:.85rem}
 button:disabled{opacity:.5;cursor:not-allowed}
 .note{font-size:.8rem;color:var(--muted);margin:10px 0 0}
+.msn{font-size:.82rem;color:var(--muted);margin:6px 0 0;font-weight:500}
+.msn.over{color:var(--down);font-weight:700;border:1px solid var(--down);border-radius:6px;padding:6px 10px;background:color-mix(in srgb,var(--down) 9%,transparent)}
 .status{margin-top:10px;font-size:.88rem;color:var(--muted);min-height:1.2em}
 .status.err{color:var(--down)} .status.ok{color:var(--up)}
 .callout{margin-top:12px;background:var(--panel-2);border:1px solid var(--accent);border-radius:8px;padding:12px;font-size:.88rem}
@@ -514,6 +516,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
           <label class="f">Stop loss<input type="number" id="rStop" step="0.25" placeholder="from your trade plan"></label>
           <label class="f">Take profit 1<input type="number" id="rT1" step="0.25" placeholder="from your trade plan"></label>
           <label class="f">Take profit 2<input type="number" id="rT2" step="0.25" placeholder="from your trade plan"></label>
+          <label class="f full">Max stop (points)<input type="number" id="rMaxStop" min="0.25" step="0.25" inputmode="decimal" placeholder="25"></label>
           <label class="f full">Max risk per trade: <b id="rMaxLbl">$150</b>
             <input type="range" id="rMax" min="25" max="1000" step="25" value="150" style="padding:0">
           </label>
@@ -539,6 +542,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
           <div class="stat"><div class="k">Stop distance</div><div class="v" id="rPts">0 pts</div></div>
           <div class="stat"><div class="k">$ to Take profit 2</div><div class="v" id="rRew2" style="color:var(--up)">$0</div></div>
         </div>
+        <div class="msn" id="rMaxStopNote" role="note" hidden></div>
         <div class="ladder" id="ladder" aria-label="Price ladder"></div>
       </div>
     </div>
@@ -860,6 +864,16 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
   /* ---------- Trade plan: exact levels read off the screenshot ---------- */
   const numOf=v=>{const n=typeof v==="number"?v:parseFloat(String(v??"").replace(/[^0-9.\-]/g,""));return isFinite(n)?n:null};
   const sideOf=r=>r.side==="short"||r.side==="long"?r.side:dirOf(r)==="bear"?"short":"long";
+  /* ---------- Max stop rule (display only: never changes the plan) ---------- */
+  const maxStop=()=>{const v=parseFloat(store.get("strat-max-stop",25));return v>0?v:25};
+  const fmtPts=x=>String(+(+x).toFixed(2));
+  function msInfo(e,s){e=numOf(e);s=numOf(s);if(e==null||s==null||e===s)return null;const pts=Math.abs(e-s),mx=maxStop(),over=pts>mx+1e-9;
+    return {pts,over,text:over?`Stop is ${fmtPts(pts)} pts — over your ${fmtPts(mx)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(mx)})`}}
+  function msHTML(e,s){const m=msInfo(e,s);return m?`<div class="msn${m.over?" over":""}" data-e="${numOf(e)}" data-s="${numOf(s)}" role="note">${m.over?icon("alert")+" ":""}${esc(m.text)}</div>`:""}
+  function msRefresh(){
+    document.querySelectorAll(".msn[data-e]").forEach(el=>{const m=msInfo(el.dataset.e,el.dataset.s);if(!m)return;el.className="msn"+(m.over?" over":"");el.innerHTML=(m.over?icon("alert")+" ":"")+esc(m.text)});
+    const n=$("rMaxStopNote");if(n){const m=msInfo(num("rEntry"),num("rStop"));n.hidden=!m;if(m){n.className="msn"+(m.over?" over":"");n.innerHTML=(m.over?icon("alert")+" ":"")+esc(m.text)}}
+  }
   function plan(r){
     const sym=r.symbol||$("sym").value,pv=PV[sym]||null,side=sideOf(r),d=side==="long"?1:-1;
     const e=numOf(r.entry_price),s=numOf(r.stop_price),t1=numOf(r.target1_price),t2=numOf(r.target2_price);
@@ -876,7 +890,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     return `<div class="tplan">
       <div class="tp-head"><span>${icon(side==="long"?"up":"down")} ${r.example?"EXAMPLE ":""}TRADE PLAN · ${side==="long"?"LONG (BUY)":"SHORT (SELL)"} ${esc(P.sym)}</span><small>${numOf(r.last_price)!=null?"Last price on chart: "+fmt(numOf(r.last_price)):""}</small></div>
       <div class="tp-row entry"><div class="tp-k">ENTER<small>${esc(order)}</small></div><div class="tp-p"${e==null&&r.entry&&r.entry!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${e==null&&r.entry&&r.entry!=="–"?"price set when the trigger candle forms":fmt(e)}</div><div class="tp-d">${esc(r.entry)}</div></div>
-      <div class="tp-row stop"><div class="tp-k">STOP LOSS<small>stop ${side==="long"?"sell":"buy"}</small></div><div class="tp-p"${P.s==null&&r.stop&&r.stop!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${P.s==null&&r.stop&&r.stop!=="–"?"set with the entry":fmt(P.s)}</div><div class="tp-d">${risk>0?`<b>−${risk.toFixed(2)} pts</b>${pv?` · −${dol(risk)}/contract`:""}<br>`:""}${esc(r.stop)}</div></div>
+      <div class="tp-row stop"><div class="tp-k">STOP LOSS<small>stop ${side==="long"?"sell":"buy"}</small></div><div class="tp-p"${P.s==null&&r.stop&&r.stop!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${P.s==null&&r.stop&&r.stop!=="–"?"set with the entry":fmt(P.s)}</div><div class="tp-d">${risk>0?`<b>−${risk.toFixed(2)} pts</b>${pv?` · −${dol(risk)}/contract`:""}<br>`:""}${esc(r.stop)}${msHTML(P.e,P.s)}</div></div>
       ${tgt(P.t1,"TAKE PROFIT 1",r.target1)}${tgt(P.t2,"TAKE PROFIT 2",r.target2)}
       <div class="tp-foot"><span>${!have?(r.source==="pasted"?(r.entry&&r.entry!=="–"?"Claude gave the entry as a rule, not a price. Wait for that candle, then read its high and low off your chart (or send a new screenshot).":"This reading has no exact prices. Ask Claude for entry, stop and target numbers, or type them in Risk calc."):"Couldn't read exact prices from the axis. Type them in Risk calc."):P.qty>0?`Size: <b>${P.qty} contract${P.qty>1?"s":""}</b>${r.contracts>0?"":" (max your risk allows)"} · risk ${dol(risk*P.qty)}`:P.qty===0?'<span style="color:var(--down)">Stop is too wide for your max risk. Skip or tighten.</span>':""}</span>
         <span class="row"><button type="button" class="sm" id="copyPlan">${icon("copy")}Copy plan</button><button type="button" class="sm" id="planRisk">${icon("calc")}Open in Risk calc</button></span></div>
@@ -1348,7 +1362,11 @@ ${text.slice(0,20000)}
     $("rReload").onclick=()=>{applyChart(riskPlan.r);calcRisk();toast("Plan numbers reloaded")};
     $("rBack").onclick=()=>showTab("analyze");
   }
+  {const ms=$("rMaxStop");if(ms){ms.value=fmtPts(maxStop());
+    ms.addEventListener("input",()=>{const v=parseFloat(ms.value);if(v>0){store.set("strat-max-stop",v);msRefresh()}});
+    ms.addEventListener("change",()=>{if(!(parseFloat(ms.value)>0))ms.value=fmtPts(maxStop())})}}
   function calcRisk(){
+    msRefresh();
     const pv=+$("rInst").value,side=getSide(),e=num("rEntry"),s=num("rStop"),t1=num("rT1"),t2=num("rT2"),mx=+$("rMax").value;
     $("rMaxLbl").textContent=money(mx);
     {const o=$("rInst").selectedOptions[0],k=o.dataset.kind;$("rKind").textContent=`${k.toUpperCase()} · ${o.dataset.sym}`;$("rKind").style.color=$("rKind").style.borderColor=k==="Micro"?"var(--up)":k==="Mini"?"var(--accent)":"var(--down)";$("rKind").title=k==="Micro"?"Micro: 1/10 the size of the mini":k==="Mini"?"E-mini: 10x a micro":"Full-size: 10x a micro gold";}
@@ -1490,7 +1508,7 @@ ${text.slice(0,20000)}
       ${j.thumb?`<img src="${j.thumb}" alt="" style="width:100%;border-radius:6px;margin-bottom:10px">`:""}
       <h3 style="font-family:var(--display);margin:0">${esc(j.headline)}</h3><p style="color:var(--muted);margin:4px 0">${esc(j.summary)}</p>
       <p style="font-family:var(--mono);font-size:.85rem;margin:6px 0">${(j.sequence||[]).join("  ")} · ${esc(j.setup)}</p>
-      <p style="font-size:.9rem;margin:4px 0">${j.contracts?`<b>Contracts:</b> ${esc(j.contracts)}<br>`:""}<b>Entry:</b> ${esc(j.entry)}<br><b>Stop:</b> ${esc(j.stop)}<br><b>T1:</b> ${esc(j.target1)}</p>
+      <p style="font-size:.9rem;margin:4px 0">${j.contracts?`<b>Contracts:</b> ${esc(j.contracts)}<br>`:""}<b>Entry:</b> ${esc(j.entry)}<br><b>Stop:</b> ${esc(j.stop)}<br><b>T1:</b> ${esc(j.target1)}</p>${msHTML(j.entry_price,j.stop_price)}
       <p class="label" style="margin-top:12px">How did it go?</p>
       <div class="outcome">${[["win","Win","check"],["loss","Loss","x"],["be","Breakeven","flat"],["skip","Skipped","pause"],["open","Open","wave"]].map(([k,t,ic])=>`<button type="button" class="sm" data-o="${k}" style="${j.outcome===k?"border-color:var(--accent);color:var(--accent)":""}">${icon(ic)}${t}</button>`).join("")}</div>
       <label class="f">What I learned<textarea id="jNote" rows="3" placeholder="e.g. Entered before the trigger. Wait for the break next time.">${esc(j.note)}</textarea></label>
@@ -1534,7 +1552,8 @@ ${text.slice(0,20000)}
       grade:q.label,trade_quality:j.trade_quality||"",verdict:j.verdict||"",signal_at_save:j.signal_at_save?SIGW[j.signal_at_save]:"",
       entry:j.entry||"",entry_price:numOf(j.entry_price),stop:j.stop||"",stop_price:numOf(j.stop_price),
       target1:j.target1||"",target1_price:numOf(j.target1_price),target2:j.target2||"",target2_price:numOf(j.target2_price),
-      contracts:j.contracts||"",outcome:j.outcome||"",note:j.note||"",headline:j.headline||""};
+      contracts:j.contracts||"",outcome:j.outcome||"",note:j.note||"",headline:j.headline||"",
+      ...(m=>({stop_pts:m?+m.pts.toFixed(2):null,over_max_stop:m?m.over:null}))(msInfo(j.entry_price,j.stop_price))};
   }
   function downloadText(text,filename,type){
     const blob=new Blob([text],{type});
@@ -1549,7 +1568,7 @@ ${text.slice(0,20000)}
       reads:journal.map(j=>Object.assign(readRow(j),{full_read:j}))};
     downloadText(JSON.stringify(out,null,2),`strat-journal-${stamp()}.json`,"application/json");
   }
-  const CSV_COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","side","grade","trade_quality","verdict","signal_at_save","entry","entry_price","stop","stop_price","target1","target1_price","target2","target2_price","contracts","outcome","note","headline"];
+  const CSV_COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","side","grade","trade_quality","verdict","signal_at_save","entry","entry_price","stop","stop_price","target1","target1_price","target2","target2_price","contracts","outcome","note","headline","stop_pts","over_max_stop"];
   function csvCell(v){
     if(v==null)return "";
     if(typeof v==="number")return String(v);
