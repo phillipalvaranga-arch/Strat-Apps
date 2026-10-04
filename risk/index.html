@@ -120,6 +120,8 @@ input[type=file]{font:500 14px "Barlow",sans-serif;padding:8px}
 .pretitle{font-weight:700;font-size:17px}
 .prebadge{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;letter-spacing:.05em;text-transform:uppercase;padding:2px 12px;border-radius:6px;color:#fff;background:var(--muted)}
 .pre.ok .prebadge{background:var(--good)} .pre.warn .prebadge{background:var(--warn)} .pre.bad .prebadge{background:var(--bad)}
+.msn{margin:8px 0 0;font-size:14px;color:var(--muted);font-weight:500}
+.msn.over{color:var(--bad);font-weight:700;border:1px solid var(--bad);border-radius:6px;padding:8px 12px;background:var(--field)}
 .fromai.pastemsg.miss{color:var(--bad);border-color:var(--bad)}
 .fromai{margin:0;font-size:14px;font-weight:600;color:var(--accent);background:var(--field);border:1px solid var(--accent);border-radius:6px;padding:8px 12px}
 .pick{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -232,6 +234,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
       <div class="label">My rules</div>
       <div class="fields">
         <div class="field"><label for="maxRisk">Max risk per trade <span class="hint">($)</span></label><input id="maxRisk" type="number" min="0" step="any" inputmode="decimal" value="100"></div>
+        <div class="field"><label for="maxStop">Max stop <span class="hint">(points)</span></label><input id="maxStop" type="number" min="0.25" step="any" inputmode="decimal" value="25"></div>
         <div class="field"><label for="minRR">Min reward : risk</label><input id="minRR" type="number" min="0" step="0.1" inputmode="decimal" value="2"></div>
         <div class="field full"><label for="fees">Fees per contract, round trip <span class="hint">($, optional)</span></label><input id="fees" type="number" min="0" step="any" inputmode="decimal" value="0"></div>
       </div>
@@ -243,6 +246,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
         <span class="badge" id="badge">—</span>
         <p id="verdictText"></p>
       </div>
+      <p class="msn" id="msVerdict" role="note" hidden></p>
 
       <div class="stats">
         <div class="stat"><span class="label">Amount at risk</span><span class="v risk" id="sRisk">—</span><span class="s" id="sRiskSub"></span></div>
@@ -286,6 +290,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
               <div class="planrow tp"><span class="pk">Take profit at</span><span class="pv" id="planTp"></span></div>
             </div>
             <p class="plannote" id="planNote"></p>
+            <p class="msn" id="msPlan" role="note" hidden></p>
           </div>
           <ul class="checks" id="preList"></ul>
           <div class="airow" id="preUseRow" hidden><button type="button" class="apply big" id="preUse">Put this plan into Trade setup again</button><span class="spec" id="preUseNote"></span></div>
@@ -361,7 +366,15 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   }
 
   let LAST=null;
-  function render(){
+  /* ---------- Max stop rule (display only: never changes the trade) ---------- */
+  const maxStop=()=>{ let v=NaN; try{ v=parseFloat(localStorage.getItem('trc-max-stop')); }catch(e){} return v>0?v:25; };
+  const fmtPts=x=>String(+(+x).toFixed(2));
+  function msInfo(e,s){ e=parseFloat(e); s=parseFloat(s); if(!isFinite(e)||!isFinite(s)||e===s) return null; const pts=Math.abs(e-s), mx=maxStop(), over=pts>mx+1e-9;
+    return {pts,over,text: over?`Stop is ${fmtPts(pts)} pts \u2014 over your ${fmtPts(mx)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(mx)})`}; }
+  function msShow(id,m){ const el=$(id); if(!el) return; el.hidden=!m; if(m){ el.className='msn'+(m.over?' over':''); el.textContent=(m.over?'\u26a0 ':'')+m.text; } }
+  function msUpdate(){ msShow('msVerdict', msInfo($('entry').value,$('sl').value)); }
+  function render(){ try{ return render0(); } finally{ msUpdate(); } }
+  function render0(){
     LAST=null;
     const I = inst();
     $('customWrap').hidden = sel.value!=='CUSTOM';
@@ -540,6 +553,9 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   ['pattern','trigHigh','trigLow','stratTarget','stopBuf','ftfc'].forEach(id=>{ $(id).addEventListener('input',render); $(id).addEventListener('change',render); });
   try{ if(localStorage.getItem('trc-mode')==='strat') $('modeStrat').checked=true; }catch(e){}
   $('form').addEventListener('submit',e=>e.preventDefault());
+  { const ms=$('maxStop'); ms.value=fmtPts(maxStop());
+    ms.addEventListener('input',()=>{ const v=parseFloat(ms.value); if(v>0){ try{localStorage.setItem('trc-max-stop',String(v));}catch(e){} msUpdate(); if($('aiText').value.trim()) preCheck(); } });
+    ms.addEventListener('change',()=>{ if(!(parseFloat(ms.value)>0)) ms.value=fmtPts(maxStop()); }); }
   // ---- Quick pre-trade check (works offline) ----
   let PRE=null, lastApplied=null, planPick=null, lastText='';
   const NUM=/[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?/g;
@@ -648,6 +664,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
       if(madeTp) parts.push('The text had no usable target, so the take profit shown is set from your minimum reward : risk.');
       if(a.dir==='long'&&!long || a.dir==='short'&&long) parts.push('Careful: the stop is on the wrong side for the direction the text describes. Check the prices.');
       $('planNote').textContent=parts.join(' ');
+      msShow('msPlan', msInfo(a.entry,a.stop));
       a._tp=tp;
     })();
     // put the plan straight into Trade setup (once per new set of prices)

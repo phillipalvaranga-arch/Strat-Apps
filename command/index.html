@@ -178,6 +178,8 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .sig{font:800 40px/1 var(--f-display);text-transform:uppercase;letter-spacing:.02em;margin:0;text-wrap:balance}
 .verdict.long .sig{color:var(--bull)} .verdict.short .sig{color:var(--bear)} .verdict.wait .sig{color:var(--warn)}
 .sigline{margin:6px 0 0;color:var(--muted)}
+.msn{margin:8px 0 0;font-size:13px;color:var(--muted);font-weight:500}
+.msn.over{color:var(--bear);font-weight:700;border:1px solid var(--bear);border-radius:6px;padding:6px 10px;background:color-mix(in srgb,var(--bear) 9%,transparent)}
 .gradebox{text-align:center}
 .grade{font:800 56px/1 var(--f-display);width:84px;height:84px;border-radius:12px;display:flex;align-items:center;justify-content:center;border:2px solid var(--line)}
 .grade.A,.grade.B{color:var(--bull);border-color:var(--bull);background:var(--bull-bg)}
@@ -341,6 +343,9 @@ details summary{cursor:pointer;font-weight:600}
           <label class="f">Stop placement
             <select id="stopMode"><option value="full">Other side of setup bar</option><option value="half">50% of setup bar (tighter)</option></select></label>
         </div>
+        <div class="row">
+          <label class="f">Max stop (points)<input id="maxStop" type="number" min="0.25" step="0.25" inputmode="decimal" value="25"></label>
+        </div>
       </section>
 
       <section class="card">
@@ -358,6 +363,7 @@ details summary{cursor:pointer;font-weight:600}
           <div class="tags" id="vtags"></div>
           <p class="sig" id="sig">—</p>
           <p class="sigline" id="sigline"></p>
+          <p class="msn" id="msSig" role="note" hidden></p>
         </div>
         <div class="gradebox"><div class="grade" id="grade">–</div><small id="score"></small></div>
       </section>
@@ -396,6 +402,7 @@ details summary{cursor:pointer;font-weight:600}
           <div class="stat"><b id="sQty">–</b><span>Contracts (within limit)</span></div>
           <div class="stat"><b id="sTotal"><span class="risk" id="sTotRisk">–</span><span class="arrow" id="sArrow"></span><span class="reward" id="sReward"></span></b><span>Total $ risk → best reward</span></div>
         </div>
+        <p class="msn" id="msPlan" role="note" hidden></p>
         <ul class="gates" id="gates"></ul>
       </section>
 
@@ -690,6 +697,12 @@ function marketTags(){
   if(ai&&Number.isFinite(num(ai.confidence)))tags.push('<span class="tag">Read confidence '+Math.round(num(ai.confidence))+'%</span>');
   return tags.join("");
 }
+/* ---------- Max stop rule (display only: never changes the plan) ---------- */
+function maxStop(){const v=parseFloat(load("sc-max-stop",25));return v>0?v:25}
+function fmtPts(x){return String(+(+x).toFixed(2))}
+function msInfo(e,s){e=e==null||e===""?NaN:Number(e);s=s==null||s===""?NaN:Number(s);if(!Number.isFinite(e)||!Number.isFinite(s)||e===s)return null;const pts=Math.abs(e-s),mx=maxStop(),over=pts>mx+1e-9;
+  return {pts,over,text:over?"Stop is "+fmtPts(pts)+" pts — over your "+fmtPts(mx)+" pt max. Too wide for your rule: skip or wait for a tighter setup.":"Stop "+fmtPts(pts)+" pts (max "+fmtPts(mx)+")"}}
+function msUpdate(p){const m=p?msInfo(p.entry,p.stop):null;["msSig","msPlan"].forEach(id=>{const el=$(id);if(!el)return;el.hidden=!m;if(m){el.className="msn"+(m.over?" over":"");el.textContent=(m.over?"⚠ ":"")+m.text}})}
 function render(){
   const g=grade();
   $("verdict").className="card verdict "+(g.cls||"");
@@ -699,6 +712,7 @@ function render(){
   renderTicket(g);
   $("gates").innerHTML=g.gates.map(x=>'<li class="'+x.c+'"><i>'+(x.c==="ok"?"✓":x.c==="bad"?"✕":"!")+'</i><span>'+esc(x.t)+'</span></li>').join("");
   const p=S.plan,m=metrics(p);
+  msUpdate(p);
   const set=(id,v)=>{const el=$(id);if(document.activeElement!==el)el.value=Number.isFinite(v)?rt(v).toFixed(dec()):""};
   set("pEntry",p&&p.entry);set("pStop",p&&p.stop);set("pT1",p&&p.t[0]);set("pT2",p&&p.t[1]);set("pT3",p&&p.t[2]);
   const tick=inst().tick;
@@ -1217,6 +1231,9 @@ function importRead(text){
   importMsg($("status").textContent+" The trade ticket is below.");
   $("ticketCard").scrollIntoView({behavior:"smooth",block:"start"});
 }
+{const ms=$("maxStop");ms.value=fmtPts(maxStop());
+  ms.addEventListener("input",()=>{const v=parseFloat(ms.value);if(v>0){save("sc-max-stop",v);msUpdate(S.plan)}});
+  ms.addEventListener("change",()=>{if(!(parseFloat(ms.value)>0))ms.value=fmtPts(maxStop())});}
 $("importBtn").addEventListener("click",()=>importRead($("importText").value));
 $("importClear").addEventListener("click",()=>{$("importText").value="";lastImported="";impLen=0;importMsg("")});
 let impT=null,impLen=0;
@@ -1294,8 +1311,9 @@ function v2RenderCurrent(){
 const v2Side=x=>x.dir==="long"||x.dir==="short"?x.dir:null;
 function v2Row(x){const w=V2.when(x.t),f=x.ftfc||{};
   return {saved_at:w.iso,date:w.date,time:w.time,symbol:x.symbol,timeframe:x.tf,setup:x.setup,setup_group:V2.group(x.setup),direction:x.dir,signal:x.sig,grade:x.grade,
-    entry:x.entry,stop:x.stop,target1:x.t1,ftfc_marked:f.known==null?"":f.known,ftfc_green:f.g==null?"":f.g,ftfc_red:f.r==null?"":f.r,outcome:x.outcome,note:x.note}}
-const V2COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","signal","grade","entry","stop","target1","ftfc_marked","ftfc_green","ftfc_red","outcome","note"];
+    entry:x.entry,stop:x.stop,target1:x.t1,ftfc_marked:f.known==null?"":f.known,ftfc_green:f.g==null?"":f.g,ftfc_red:f.r==null?"":f.r,outcome:x.outcome,note:x.note,
+    ...(ms=>({stop_pts:ms?+ms.pts.toFixed(2):"",over_max_stop:ms?ms.over:""}))(msInfo(x.entry,x.stop))}}
+const V2COLS=["saved_at","date","time","symbol","timeframe","setup","setup_group","direction","signal","grade","entry","stop","target1","ftfc_marked","ftfc_green","ftfc_red","outcome","note","stop_pts","over_max_stop"];
 function v2ExportJSON(){if(!v2log.length){V2.toast("No logged reads to export yet");return}
   V2.download(JSON.stringify({source:"strat-command",kind:"log",version:2,exported_at:new Date().toISOString(),count:v2log.length,items:v2log.map(x=>Object.assign(v2Row(x),{raw:x}))},null,2),"strat-command-log-"+V2.stamp()+".json","application/json")}
 function v2ExportCSV(){if(!v2log.length){V2.toast("No logged reads to export yet");return}
