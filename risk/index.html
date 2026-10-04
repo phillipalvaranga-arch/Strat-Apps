@@ -234,7 +234,11 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
       <div class="label">My rules</div>
       <div class="fields">
         <div class="field"><label for="maxRisk">Max risk per trade <span class="hint">($)</span></label><input id="maxRisk" type="number" min="0" step="any" inputmode="decimal" value="100"></div>
+        <div class="field"><label for="ddAmt">Trailing drawdown <span class="hint">($)</span></label><input id="ddAmt" type="number" min="0" step="any" inputmode="decimal" placeholder="e.g. 2500"></div>
+        <div class="field"><label for="ddPct">Max loss per trade <span class="hint">(% of drawdown)</span></label><input id="ddPct" type="number" min="0.1" step="any" inputmode="decimal" value="5"></div>
+        <div class="field"><label for="msMode">Max stop from</label><select id="msMode"><option value="dd">From drawdown</option><option value="fixed">Fixed points</option></select></div>
         <div class="field"><label for="maxStop">Max stop <span class="hint">(points)</span></label><input id="maxStop" type="number" min="0.25" step="any" inputmode="decimal" value="25"></div>
+        <p class="msn" id="msInfo" style="grid-column:1/-1;margin:0" aria-live="polite"></p>
         <div class="field"><label for="minRR">Min reward : risk</label><input id="minRR" type="number" min="0" step="0.1" inputmode="decimal" value="2"></div>
         <div class="field full"><label for="fees">Fees per contract, round trip <span class="hint">($, optional)</span></label><input id="fees" type="number" min="0" step="any" inputmode="decimal" value="0"></div>
       </div>
@@ -324,6 +328,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     {id:'MGC', name:'MGC · Micro Gold', pv:10, tick:0.1},
     {id:'ES',  name:'ES · E-mini S&P 500', pv:50, tick:0.25},
     {id:'NQ',  name:'NQ · E-mini Nasdaq-100', pv:20, tick:0.25},
+    {id:'GC',  name:'GC · Gold (full size)', pv:100, tick:0.1},
     {id:'CUSTOM', name:'Other (enter $ per point)', pv:null, tick:null}
   ];
   const $ = id => document.getElementById(id);
@@ -369,10 +374,27 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   /* ---------- Max stop rule (display only: never changes the trade) ---------- */
   const maxStop=()=>{ let v=NaN; try{ v=parseFloat(localStorage.getItem('trc-max-stop')); }catch(e){} return v>0?v:25; };
   const fmtPts=x=>String(+(+x).toFixed(2));
-  function msInfo(e,s){ e=parseFloat(e); s=parseFloat(s); if(!isFinite(e)||!isFinite(s)||e===s) return null; const pts=Math.abs(e-s), mx=maxStop(), over=pts>mx+1e-9;
-    return {pts,over,text: over?`Stop is ${fmtPts(pts)} pts \u2014 over your ${fmtPts(mx)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(mx)})`}; }
+  const MSK='trc-', GET=(k,d)=>{ try{ const v=localStorage.getItem(k); return v==null?d:JSON.parse(v); }catch(e){ return d; } }, SET=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
+  /* trailing-drawdown rule: max $ per trade = drawdown x %; max stop pts = max $ / (point value x contracts) */
+  const msUsd=x=>{x=+x;return "$"+(Math.abs(x-Math.round(x))<0.005?Math.round(x).toLocaleString("en-US"):x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))};
+  function msCfg(){const dd=parseFloat(GET(MSK+"dd","")),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
+    return {dd:dd>0?dd:0,pct:pct>0?pct:5,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
+  function msLimit(pv,qty){const c=msCfg(),q=Math.max(1,Math.floor(+qty)||1);pv=+pv;
+    if(c.dd>0&&c.mode!=="fixed"&&pv>0){const maxD=c.dd*c.pct/100;return {mode:"dd",pts:maxD/(pv*q),maxD,q,pv,pct:c.pct,dd:c.dd}}
+    return {mode:"fixed",pts:c.fixed,maxD:pv>0?c.fixed*pv*q:null,q,pv,pct:c.pct,dd:c.dd}}
+  function msLimitLine(pv,qty,sym){const L=msLimit(pv,qty),c=msCfg();
+    if(L.mode==="dd")return `Max loss ${msUsd(L.maxD)} (${fmtPts(L.pct)}% of ${msUsd(L.dd)}) = ${fmtPts(L.pts)} pts on ${sym||"this contract"} ×${L.q}`;
+    return `Fixed max stop: ${fmtPts(L.pts)} pts`+(c.mode==="dd"&&!(c.dd>0)?" (enter your trailing drawdown to use the drawdown rule)":c.dd>0&&!(+pv>0)?" (no point value for this contract)":"")}
+  function msInfo(e,s,pv,qty){e=parseFloat(e);s=parseFloat(s);if(!isFinite(e)||!isFinite(s)||e===s)return null;
+    const pts=Math.abs(e-s),L=msLimit(pv,qty),over=pts>L.pts+1e-9,stopD=+pv>0?pts*pv*L.q:null;
+    const text=L.mode==="dd"
+      ?(over?`Stop is ${fmtPts(pts)} pts (${msUsd(stopD)}) — over your max of ${fmtPts(L.pts)} pts (${msUsd(L.maxD)}, ${fmtPts(L.pct)}% of drawdown). Too wide: skip or wait for a tighter setup.`
+            :`Stop ${fmtPts(pts)} pts (${msUsd(stopD)}) — within max ${fmtPts(L.pts)} pts (${msUsd(L.maxD)})`)
+      :(over?`Stop is ${fmtPts(pts)} pts — over your ${fmtPts(L.pts)} pt max. Too wide for your rule: skip or wait for a tighter setup.`:`Stop ${fmtPts(pts)} pts (max ${fmtPts(L.pts)})`);
+    return {pts,over,text,maxPts:L.pts,maxD:L.maxD,mode:L.mode}}
   function msShow(id,m){ const el=$(id); if(!el) return; el.hidden=!m; if(m){ el.className='msn'+(m.over?' over':''); el.textContent=(m.over?'\u26a0 ':'')+m.text; } }
-  function msUpdate(){ msShow('msVerdict', msInfo($('entry').value,$('sl').value)); }
+  const msQty=()=>{ const q=Math.floor(parseFloat($('qty').value)); return q>=1?q:1; };
+  function msUpdate(){ const I=inst(); msShow('msVerdict', msInfo($('entry').value,$('sl').value,I.pv,msQty())); $('msInfo').textContent=msLimitLine(I.pv,msQty(),I.id==='CUSTOM'?'this contract':I.id); }
   function render(){ try{ return render0(); } finally{ msUpdate(); } }
   function render0(){
     LAST=null;
@@ -556,6 +578,13 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   { const ms=$('maxStop'); ms.value=fmtPts(maxStop());
     ms.addEventListener('input',()=>{ const v=parseFloat(ms.value); if(v>0){ try{localStorage.setItem('trc-max-stop',String(v));}catch(e){} msUpdate(); if($('aiText').value.trim()) preCheck(); } });
     ms.addEventListener('change',()=>{ if(!(parseFloat(ms.value)>0)) ms.value=fmtPts(maxStop()); }); }
+  {const dd=$("ddAmt"),pc=$("ddPct"),md=$("msMode");
+    const sync=()=>{const c=msCfg();dd.value=c.dd>0?String(c.dd):"";pc.value=fmtPts(c.pct);md.value=c.mode||(c.dd>0?"dd":"fixed")};sync();
+    dd.addEventListener("input",()=>{const v=parseFloat(dd.value);SET(MSK+"dd",v>0?v:"");if(!GET(MSK+"ms-mode",null))md.value=v>0?"dd":"fixed";msUpdate(); if($('aiText').value.trim()) preCheck();});
+    pc.addEventListener("input",()=>{const v=parseFloat(pc.value);if(v>0){SET(MSK+"dd-pct",v);msUpdate(); if($('aiText').value.trim()) preCheck();}});
+    pc.addEventListener("change",()=>{if(!(parseFloat(pc.value)>0))pc.value=fmtPts(msCfg().pct)});
+    md.addEventListener("change",()=>{SET(MSK+"ms-mode",md.value);msUpdate(); if($('aiText').value.trim()) preCheck();});}
+
   // ---- Quick pre-trade check (works offline) ----
   let PRE=null, lastApplied=null, planPick=null, lastText='';
   const NUM=/[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?/g;
@@ -664,7 +693,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
       if(madeTp) parts.push('The text had no usable target, so the take profit shown is set from your minimum reward : risk.');
       if(a.dir==='long'&&!long || a.dir==='short'&&long) parts.push('Careful: the stop is on the wrong side for the direction the text describes. Check the prices.');
       $('planNote').textContent=parts.join(' ');
-      msShow('msPlan', msInfo(a.entry,a.stop));
+      msShow('msPlan', msInfo(a.entry,a.stop,I.pv,msQty()));
       a._tp=tp;
     })();
     // put the plan straight into Trade setup (once per new set of prices)
