@@ -768,18 +768,19 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
   /* ---------- Engine: Claude inside the app, or API key on the desktop ---------- */
   let sample=null, downloads=null, imagesOk=false, mode="connecting";
   const inClaude=!!(window.claude&&window.claude.use);   /* running as a Claude artifact (no direct internet) */
-  const canAsk=()=>!!sample;
+  const useKey=()=>!inClaude&&!!cfg.key;               /* outside Claude, a saved API key lets the app ask Claude directly */
+  const canAsk=()=>!!sample||useKey();
   const DESK="Desktop copy: get the reading from Claude, then paste it here. Follow the 4 steps below. No API key needed.";
   const HOWTO="Your screenshot can't be sent from inside this view. Use the 4 steps below: copy the Strat prompt, paste it into a Claude chat with your screenshot, then paste Claude's answer back here.";
   const cfg=Object.assign({key:"",model:"claude-sonnet-5-5",tier:"complex"},store.get("strat-cfg",{}));
-  if(cfg.key){cfg.key="";store.set("strat-cfg",cfg)}   /* API keys are no longer used: wipe any saved one */
+  /* the key stays only in this browser's localStorage ("strat-cfg"); it is never exported */
 
   function setMode(){
-    mode=sample&&imagesOk?"claude":"none";
+    mode=sample&&imagesOk?"claude":useKey()?"api":"none";
     const dot=$("modeDot"),txt=$("modeText");
     dot.className="dot "+(mode==="none"&&inClaude?"off":"on");
-    txt.textContent=mode==="claude"?"Connected to Claude":(inClaude?"Use Paste mode (4 steps below)":"Desktop copy · no key needed");
-    $("setClaude").hidden=!inClaude; $("setApi").hidden=true; $("setDesk").hidden=inClaude;
+    txt.textContent=mode==="claude"?"Connected to Claude":mode==="api"?"Connected with your API key":(inClaude?"Use Paste mode (4 steps below)":"Desktop copy · no key needed");
+    $("setClaude").hidden=!inClaude; $("setApi").hidden=inClaude; $("setDesk").hidden=inClaude;
     $("fallback").hidden=mode!=="none";
     if($("chat"))$("chat").hidden=!canAsk();
     $("deepWrap").hidden=!canAsk();
