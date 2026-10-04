@@ -120,6 +120,7 @@ input[type=file]{font:500 14px "Barlow",sans-serif;padding:8px}
 .pretitle{font-weight:700;font-size:17px}
 .prebadge{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:20px;letter-spacing:.05em;text-transform:uppercase;padding:2px 12px;border-radius:6px;color:#fff;background:var(--muted)}
 .pre.ok .prebadge{background:var(--good)} .pre.warn .prebadge{background:var(--warn)} .pre.bad .prebadge{background:var(--bad)}
+.fromai.pastemsg.miss{color:var(--bad);border-color:var(--bad)}
 .fromai{margin:0;font-size:14px;font-weight:600;color:var(--accent);background:var(--field);border:1px solid var(--accent);border-radius:6px;padding:8px 12px}
 .pick{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .pklab{font-weight:600;font-size:15px}
@@ -272,6 +273,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
         <div class="field">
           <label for="aiText">Text to analyze</label>
           <textarea id="aiText" rows="7" placeholder="Paste the text here…"></textarea>
+          <p class="fromai pastemsg" id="pasteMsg" role="status" aria-live="polite" style="margin-top:8px" hidden></p>
         </div>
         <div class="pre" id="pre" hidden>
           <div class="prehead"><span class="prebadge" id="preBadge"></span><span class="pretitle">Before you take this trade</span></div>
@@ -540,7 +542,9 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   $('form').addEventListener('submit',e=>e.preventDefault());
   // ---- Quick pre-trade check (works offline) ----
   let PRE=null, lastApplied=null, planPick=null, lastText='';
-  const NUM=/[0-9][0-9,]*(?:\.[0-9]+)?/g;
+  const NUM=/[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?/g;
+  /* curly quotes from chat apps -> plain quotes so JSON and labels read normally */
+  const sq=x=>String(x||'').replace(/[\u201c\u201d\u201e\u201f\u2033\uff02]/g,'"').replace(/[\u2018\u2019\u201a\u201b\u2032]/g,"'");
   function pricesIn(str){ return (String(str).match(NUM)||[]).map(x=>parseFloat(x.replace(/,/g,''))).filter(v=>isFinite(v)&&v>=20); }
   // first price that follows a label: same line first, else the next line when the label is a heading
   function afterLabel(t, re){
@@ -561,6 +565,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   }
   const RE_ENTRY=/\b(?:entry|enter|entries)\b/gi, RE_STOP=/(?<!buy\s)(?<!sell\s)\bstop(?:[ -]?loss)?\b|\bsl\b|\binvalidat\w*/gi, RE_TGT=/take[ -]?profit|\btarget(?:\s*1)?|\btp\s*1?\b|\bt1\b|\bmagnitude\b/gi;
   function parseAnalysis(t){
+    t=sq(t);
     const low=t.toLowerCase();
     const cnt=re=>(low.match(re)||[]).length;
     const bull=cnt(/\b(bullish|long|buy|buying|upside|higher high|2u|calls?)\b/g);
@@ -570,7 +575,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     const plans=[];
     const addPlan=(e,st,tg,d)=>{ if(e==null||st==null||!isFinite(e)||!isFinite(st)||e===st) return; const long=st<e; if(tg!=null && (!isFinite(tg) || (long? tg<=e : tg>=e))) tg=null;
       if(!plans.some(p=>p.entry===e&&p.stop===st)) plans.push({dir:long?'long':'short',entry:e,stop:st,tp:tg}); };
-    const jnum=k=>{ const m=t.match(new RegExp('"'+k+'"\\s*:\\s*"?(-?[0-9][0-9,]*(?:\\.[0-9]+)?)','i')); return m?parseFloat(m[1].replace(/,/g,'')):null; };
+    const jnum=k=>{ const m=t.match(new RegExp('"'+k+'"\\s*:\\s*"?(-?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\\.[0-9]+)?)','i')); return m?parseFloat(m[1].replace(/,/g,'')):null; };
     // 0) the data block a chart-reading prompt adds at the end (entry_price, stop_price, target1_price)
     if(/"entry_price"/i.test(t)){
       addPlan(jnum('entry_price'),jnum('stop_price'),jnum('target1_price'));
@@ -603,7 +608,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   }
   function preCheck(){
     const box=$('pre'), list=$('preList'), t=$('aiText').value.trim();
-    if(!t){ box.hidden=true; PRE=null; lastApplied=null; lastText=''; planPick=null; $('fromAi').hidden=true; return; }
+    if(!t){ box.hidden=true; PRE=null; lastApplied=null; lastText=''; planPick=null; $('fromAi').hidden=true; $('pasteMsg').hidden=true; return; }
     if(t!==lastText){ lastText=t; planPick=null; }
     const a=parseAnalysis(t); PRE=a; box.hidden=false;
     // chooser when the text holds more than one plan
@@ -689,6 +694,9 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     $('preBadge').textContent = bad?'Don\u2019t take it yet':warn?'Check first':'Ready';
     const canUse = a.entry!=null && a.stop!=null && (a.tp!=null || a._tp!=null);
     $('preUseRow').hidden=!canUse; $('preUseNote').textContent='';
+    { const pm=$('pasteMsg'); pm.hidden=false;
+      if(a.entry!=null && a.stop!=null && a.entry!==a.stop){ pm.className='fromai pastemsg'; pm.textContent='Plan found: entry '+a.entry+', stop loss '+a.stop+', take profit '+(a._tp!=null?a._tp:a.tp)+'. It\u2019s filled into Trade setup at the top. Check the details below.'; }
+      else { pm.className='fromai pastemsg miss'; pm.textContent='No entry and stop loss prices found in this text, so Trade setup wasn\u2019t changed. Paste Claude\u2019s reply with lines like Entry: 6512.25, Stop: 6498.75, Target: 6530.'; } }
   }
   $('preUse').addEventListener('click',()=>{
     if(!PRE) return;
@@ -699,8 +707,13 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     $('preUseNote').textContent='Plan copied into Trade setup.'; $('fromAi').hidden=false; $('form').scrollIntoView({behavior:'smooth',block:'start'});
   });
   let preT=null;
-  $('aiText').addEventListener('input',()=>{ clearTimeout(preT); preT=setTimeout(preCheck,250); });
-  $('aiText').addEventListener('paste',()=>{ setTimeout(()=>{ clearTimeout(preT); preCheck(); if(!$('fromAi').hidden) $('fromAi').scrollIntoView({behavior:'smooth',block:'center'}); },60); });
+  let pasteAt=0, txtLen=0;
+  function afterText(){ const before=lastApplied; clearTimeout(preT); preCheck(); if(!$('aiText').value.trim()) return;
+    if(!$('fromAi').hidden && (lastApplied!==before || Date.now()-pasteAt<1000)) $('fromAi').scrollIntoView({behavior:'smooth',block:'center'});
+    else $('pasteMsg').scrollIntoView({behavior:'smooth',block:'nearest'}); }
+  $('aiText').addEventListener('input',()=>{ const v=$('aiText').value, jump=v.length-txtLen; txtLen=v.length; clearTimeout(preT);
+    preT=setTimeout(()=>{ if(jump>=30 && Date.now()-pasteAt>800) afterText(); else preCheck(); },250); });
+  $('aiText').addEventListener('paste',()=>{ pasteAt=Date.now(); setTimeout(afterText,60); });
   const _render=render; render=function(){ _render(); if($('aiText').value.trim()) preCheck(); };
 
   // ---- Claude analysis ----
@@ -708,7 +721,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     const go=$('aiGo'), stop=$('aiStop'), out=$('aiOut'), note=$('aiNote'), txt=$('aiText');
     let sample=null, ctl=null;
     const offline=()=>{ go.disabled=true; $('aiOffline').hidden=false; };
-    if(!window.claude || typeof window.claude.use!=='function'){ offline(); return; }
+    if(!window.claude || typeof window.claude.use!=='function'){ offline(); go.hidden=true; $('aiOffline').textContent='Your pasted text is read automatically: the entry, stop loss and take profit it finds go into Trade setup at the top. (The Analyze with Claude button only works when this app is opened inside Claude.)'; return; }
     go.disabled=true; note.textContent='Connecting to Claude…';
     window.claude.use('sample').then(async fn=>{
       sample=fn;

@@ -1,5 +1,5 @@
 // Simple offline cache for Strat Command
-const CACHE="command-v1";
+const CACHE="command-v2";
 const CORE=["./","./index.html","./manifest.webmanifest","./icon-192.png","./icon-512.png","./icon-maskable-512.png","./apple-touch-icon.png"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()))});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith("command-")&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
