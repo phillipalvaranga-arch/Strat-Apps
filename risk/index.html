@@ -233,9 +233,9 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
       <div class="divider"></div>
       <div class="label">My rules</div>
       <div class="fields">
-        <div class="field"><label for="maxRisk">Max risk per trade <span class="hint">($)</span></label><input id="maxRisk" type="number" min="0" step="any" inputmode="decimal" value="75"></div>
+        <div class="field"><label for="maxRisk">Max risk per trade <span class="hint">($)</span></label><input id="maxRisk" type="number" min="0" step="any" inputmode="decimal" value="100"></div>
         <div class="field"><label for="ddAmt">Trailing drawdown <span class="hint">($)</span></label><input id="ddAmt" type="number" min="0" step="any" inputmode="decimal" placeholder="e.g. 2500"></div>
-        <div class="field"><label for="ddPct">Max loss per trade <span class="hint">(% of drawdown)</span></label><input id="ddPct" type="number" min="0.1" step="any" inputmode="decimal" value="5"></div>
+        <div class="field"><label for="ddPct">Max loss per trade <span class="hint">(% of drawdown)</span></label><input id="ddPct" type="number" min="0.1" step="any" inputmode="decimal" value="6.67"></div>
         <div class="field"><label for="msMode">Max stop from</label><select id="msMode"><option value="dd">From drawdown</option><option value="fixed">Fixed points</option></select></div>
         <div class="field"><label for="maxStop">Max stop <span class="hint">(points)</span></label><input id="maxStop" type="number" min="0.25" step="any" inputmode="decimal" value="25"></div>
         <p class="msn" id="msInfo" style="grid-column:1/-1;margin:0" aria-live="polite"></p>
@@ -352,6 +352,10 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   const KEY='trc-settings-v1';
   // one-time migration: old default max risk $100 -> $75; empty drawdown -> $1,500
   try{ if(!localStorage.getItem('trc-mig-r75-dd1500')){ const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(o && o.maxRisk!=null && String(o.maxRisk).trim()!=='' && +o.maxRisk===100){ o.maxRisk='75'; localStorage.setItem(KEY,JSON.stringify(o)); } const d=localStorage.getItem('trc-dd'); if(d==null||d===''||d==='""') localStorage.setItem('trc-dd','1500'); localStorage.setItem('trc-mig-r75-dd1500','true'); } }catch(e){}
+  // one-time migration: max risk $75 -> $100 (new default)
+  try{ if(!localStorage.getItem('trc-mig-r100')){ const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(o && o.maxRisk!=null && String(o.maxRisk).trim()!=='' && +o.maxRisk===75){ o.maxRisk='100'; localStorage.setItem(KEY,JSON.stringify(o)); } localStorage.setItem('trc-mig-r100','true'); } }catch(e){}
+  // one-time migration: drawdown % 5 -> 6.67 (6.67% of $1,500 = about $100)
+  try{ if(!localStorage.getItem('trc-mig-pct667')){ const v=localStorage.getItem('trc-dd-pct'); let n=NaN; try{ const j=JSON.parse(v); n=(j===''||j==null)?NaN:+j; }catch(e){} if(n===5) localStorage.setItem('trc-dd-pct','6.67'); localStorage.setItem('trc-mig-pct667','true'); } }catch(e){}
   try{
     const s = JSON.parse(localStorage.getItem(KEY)||'null');
     if(s){ ['inst','maxRisk','minRR','fees','cPV','cTick'].forEach(k=>{ if(s[k]!=null && $(k)) $(k).value=s[k]; }); }
@@ -379,8 +383,8 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   const MSK='trc-', GET=(k,d)=>{ try{ const v=localStorage.getItem(k); return v==null?d:JSON.parse(v); }catch(e){ return d; } }, SET=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
   /* trailing-drawdown rule: max $ per trade = drawdown x %; max stop pts = max $ / (point value x contracts) */
   const msUsd=x=>{x=+x;return "$"+(Math.abs(x-Math.round(x))<0.005?Math.round(x).toLocaleString("en-US"):x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))};
-  function msCfg(){const dd=parseFloat(GET(MSK+"dd",1500)),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
-    return {dd:dd>0?dd:0,pct:pct>0?pct:5,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
+  function msCfg(){const dd=parseFloat(GET(MSK+"dd",1500)),pct=parseFloat(GET(MSK+"dd-pct",6.67)),mode=GET(MSK+"ms-mode",null);
+    return {dd:dd>0?dd:0,pct:pct>0?pct:6.67,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
   function msLimit(pv,qty){const c=msCfg(),q=Math.max(1,Math.floor(+qty)||1);pv=+pv;
     if(c.dd>0&&c.mode!=="fixed"&&pv>0){const maxD=c.dd*c.pct/100;return {mode:"dd",pts:maxD/(pv*q),maxD,q,pv,pct:c.pct,dd:c.dd}}
     return {mode:"fixed",pts:c.fixed,maxD:pv>0?c.fixed*pv*q:null,q,pv,pct:c.pct,dd:c.dd}}
