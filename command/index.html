@@ -319,6 +319,7 @@ details summary{cursor:pointer;font-weight:600}
         <p class="hint">Copy Claude's whole analysis from the chat (select it and press <kbd>Ctrl</kbd>+<kbd>C</kbd>) and paste it here. The app reads the entry, stop, targets, direction, instrument, timeframe and continuity, then sizes and grades the trade. If the reply has a <b>STRAT-CODE</b> block, the bars come in too.</p>
         <textarea id="importText" placeholder="Paste Claude's analysis here…"></textarea>
         <div class="btns"><button class="primary" id="importBtn">Import read</button><button id="importClear">Clear</button></div>
+        <p class="status" id="importMsg" role="status" aria-live="polite" style="margin-top:8px"></p>
       </section>
 
       <section class="card">
@@ -1091,14 +1092,16 @@ function parseProse(text){
     const v=firstPrice(c[col!=null&&c[col]!=null?col:1]);if(v==null)continue;
     if(/^entry/.test(label)&&tbl.entry==null)tbl.entry=v;
     else if(/^stop/.test(label)&&tbl.stop==null)tbl.stop=v;
-    else{const tm=label.match(/^target\s*(\d)/);if(tm&&tbl["t"+tm[1]]==null)tbl["t"+tm[1]]=v}
+    else{const tm=label.match(/^(?:target|tp|take\s*profit)\s*(\d)/)||(/target/.test(label)?(/^(first|1st)\b/.test(label)?[0,"1"]:/^(second|2nd)\b/.test(label)?[0,"2"]:/^(third|3rd)\b/.test(label)?[0,"3"]:null):null);if(tm&&tbl["t"+tm[1]]==null)tbl["t"+tm[1]]=v}
   }
   // 2) labeled lines ("Entry: 4,185.6", "Stop loss at 4,194.1")
-  const grab=re=>{for(const l of lines){if(cellsOf(l))continue;if(re.test(l)){const v=firstPrice(l.replace(re,""));if(v!=null)return v}}return null};
+  const grab=re=>{for(let i=0;i<lines.length;i++){const l=lines[i];if(cellsOf(l))continue;if(re.test(l)){const rest=l.replace(re,""),v=firstPrice(rest);if(v!=null)return v;
+      /* heading on its own line, price on the next line */
+      if(rest.replace(/[^A-Za-z0-9]/g,"").length<3&&lines[i+1]&&!cellsOf(lines[i+1])){const v2=firstPrice(lines[i+1]);if(v2!=null)return v2}}}return null};
   out.entry=tbl.entry??grab(/^[\W\d]*entry\b[^:\d]*:?/i)??grab(/\b(sell|buy)\s+stop\s+(at\s+)?/i);
   out.stop=tbl.stop??grab(/^[\W\d]*stop(\s*loss)?\b[^:\d]*:?/i)??grab(/\bstop\s*loss\s*(at\s+)?/i);
-  out.targets=[tbl.t1??grab(/target\s*1\b/i),tbl.t2??grab(/target\s*2\b/i),tbl.t3??grab(/target\s*3\b/i)].filter(v=>v!=null);
-  if(!out.targets.length){const tl=lines.find(l=>/^[\W]*targets?\b/i.test(l));if(tl){const m=tl.replace(/\([^)]*\)/g," ").match(/\d[\d,]*\.\d+|\d{3,}[\d,]*/g);if(m)out.targets=m.map(parseNum).filter(v=>v!=null&&v>=10).slice(0,3)}}
+  out.targets=[tbl.t1??grab(/target\s*1\b/i)??grab(/\b((first|1st)\s+(profit\s+)?target|take\s*profit\s*1|tp\s*1)\b/i),tbl.t2??grab(/target\s*2\b/i)??grab(/\b((second|2nd)\s+(profit\s+)?target|take\s*profit\s*2|tp\s*2)\b/i),tbl.t3??grab(/target\s*3\b/i)??grab(/\b((third|3rd)\s+(profit\s+)?target|take\s*profit\s*3|tp\s*3)\b/i)].filter(v=>v!=null);
+  if(!out.targets.length){const tl=lines.find(l=>/^[\W]*(targets?|take\s*profit|tp)\b/i.test(l));if(tl){const m=tl.replace(/\([^)]*\)/g," ").match(/\d[\d,]*\.\d+|\d{3,}[\d,]*/g);if(m)out.targets=m.map(parseNum).filter(v=>v!=null&&v>=10).slice(0,3)}}
   // direction
   const verdict=(lines.find(l=>/^verdict\b|verdict:/i.test(l))||"");
   if(colDir)out.dir=colDir;
@@ -1110,8 +1113,9 @@ function parseProse(text){
   for(const k of syms){if(new RegExp("(^|[^A-Za-z0-9])"+k+"(1!|[^A-Za-z0-9]|$)").test(clean)){out.inst=k;break}}
   if(!out.inst&&/micro gold/i.test(clean))out.inst="MGC";
   const head=lines.slice(0,3).join(" ");
-  const tf=head.match(/\b(1|4)\s*hour\b/i)||head.match(/\b(1m|5m|15m|30m|1h|4h)\b/i)||clean.match(/\b(1|4)\s*hour\b/i)||clean.match(/·\s*(1m|5m|15m|30m|1h|4h)\b/i);
-  if(tf)out.tf=/hour/i.test(tf[0])?tf[1]+"h":tf[1].toLowerCase();
+  const TFM=/\b(1|5|15|30)[\s-]?(?:mins?|minutes?)\b/i,TFH=/\b(1|4)[\s-]?(?:hours?|hrs?)\b/i,TFC=/\b(1|5|15|30)[\s-]?(?:m|mins?|minutes?)\s+(?:chart|candles?|bars?|timeframe|tf)\b/i;
+  const tf=head.match(/\b(1|4)\s*hour\b/i)||head.match(TFM)||head.match(/\b(1m|5m|15m|30m|1h|4h)\b/i)||head.match(TFH)||clean.match(TFC)||clean.match(/\b(1|4)\s*hour\b/i)||clean.match(/·\s*(1m|5m|15m|30m|1h|4h)\b/i);
+  if(tf){const g=tf[1];out.tf=/^\d+[mh]$/i.test(g)?g.toLowerCase():/^[\s-]*h/i.test(tf[0].slice(String(g).length))?g+"h":g+"m"}
   // pattern, bias, condition
   const pick=re=>{const l=lines.find(x=>re.test(x));return l?l.replace(re,"").replace(/^[\s:–-]+/,"").trim():null};
   const pat=pick(/^[\W]*(setup|pattern)\s*:/i);if(pat)out.pattern=pat.replace(/\.$/,"").slice(0,80);
@@ -1145,8 +1149,21 @@ function parseProse(text){
 
 /* ---------- import a Claude chat read ---------- */
 function parseNum(t){const n=Number(String(t).replace(/,/g,""));return Number.isFinite(n)?n:null}
+/* curly quotes from chat apps -> plain quotes so JSON and labels read normally */
+function sq(x){return String(x||"").replace(/[\u201c\u201d\u201e\u201f\u2033\uff02]/g,'"').replace(/[\u2018\u2019\u201a\u201b\u2032]/g,"'")}
+/* the JSON block Strat Chart Reader's prompt asks Claude for (entry_price, stop_price, target1_price ...) */
+function readerJSON(text){
+  const at=text.indexOf('"entry_price"');if(at<0)return null;
+  for(let st=text.lastIndexOf("{",at),k=0;st>=0&&k<25;st=text.lastIndexOf("{",st-1),k++){
+    let depth=0;for(let i=st;i<text.length;i++){const ch=text[i];if(ch==="{")depth++;else if(ch==="}"){depth--;if(!depth){try{const o=JSON.parse(text.slice(st,i+1));if(o&&typeof o==="object"&&"entry_price" in o)return o}catch(e){}break}}}
+  }
+  return null;
+}
+function importMsg(msg,err){const el=$("importMsg");if(!el)return;el.className="status"+(err?" err":"");el.textContent=msg||"";if(err)el.scrollIntoView({behavior:"smooth",block:"center"})}
+let lastImported="";
 function importRead(text){
-  text=String(text||"").trim();if(!text){status("Paste Claude's analysis first.",true);return}
+  text=sq(text).trim();if(!text){status("Paste Claude's analysis first.",true);importMsg("Paste Claude's analysis first.",true);return}
+  lastImported=text;
   let j=null;
   const at=text.indexOf('"strat"');
   if(at>=0){const st=text.lastIndexOf("{",at);let depth=0;for(let i=st;i<text.length;i++){const ch=text[i];if(ch==="{")depth++;else if(ch==="}"){depth--;if(!depth){try{j=JSON.parse(text.slice(st,i+1))}catch(e){}break}}}}
@@ -1158,8 +1175,20 @@ function importRead(text){
     out.bars=(Array.isArray(j.bars)?j.bars:[]).map(b=>Array.isArray(b)?{o:num(b[0]),h:num(b[1]),l:num(b[2]),c:num(b[3])}:null).filter(b=>b&&[b.o,b.h,b.l,b.c].every(v=>v!=null)&&b.h>=b.l);
   }else{
     Object.assign(out,parseProse(text));
+    const rj=readerJSON(text);
+    if(rj){const jn=v=>v==null||v===""?null:parseNum(v);
+      if(jn(rj.entry_price)!=null)out.entry=jn(rj.entry_price);
+      if(jn(rj.stop_price)!=null)out.stop=jn(rj.stop_price);
+      const tg=[rj.target1_price,rj.target2_price].map(jn).filter(v=>v!=null);if(tg.length)out.targets=tg;
+      if(rj.side==="long"||rj.side==="short")out.dir=rj.side;
+      if(rj.chart_symbol&&rj.chart_symbol!=="Other")out.inst=rj.chart_symbol;
+      if(rj.chart_timeframe)out.tf=rj.chart_timeframe;
+      if(rj.setup&&!/^none$/i.test(rj.setup))out.pattern=String(rj.setup).slice(0,80);
+      if(/^(bullish|bearish|neutral)$/i.test(rj.direction||""))out.bias=String(rj.direction).toLowerCase();
+      if(rj.summary&&!out.notes)out.notes=String(rj.summary)}
   }
-  if(out.entry==null&&out.bars.length<3){status("Couldn't find levels or bars in that text. Paste the STRAT-CODE block from Claude's reply.",true);return}
+  if(out.entry==null&&out.bars.length<3){const m="Couldn't find an entry price or bars in that text. Paste Claude's whole reply: it needs lines like Entry: 6512.25, Stop: 6498.75, Target 1: 6530 (or the STRAT-CODE block).";status(m,true);importMsg(m,true);return}
+  if(out.stop==null&&out.bars.length<3){const m="Found the entry ("+out.entry+") but no stop loss price, so nothing was imported. Make sure Claude's reply has a line like Stop: 6498.75.";status(m,true);importMsg(m,true);return}
   if(autoClearOn()){clearPlanLevels(true);resetUserFTFC()}
   if(out.inst){const k=String(out.inst).toUpperCase().replace(/1!$/,"");if(INST[k])settings.inst=k}
   if(out.tf){const o=[...$("tf").options].find(x=>x.value.toLowerCase()===String(out.tf).toLowerCase());if(o)settings.tf=o.value}
@@ -1185,10 +1214,14 @@ function importRead(text){
   const fz=S.ftfcAI,cs=Object.keys(fz).filter(k=>fz[k]!=="?").map(k=>TFNAMES[k]+" "+fz[k]).join(", ");
   status("Read: "+(S.plan?S.plan.dir.toUpperCase():"no direction")+" · entry "+fp(S.plan&&S.plan.entry)+" · stop "+fp(S.plan&&S.plan.stop)+" · targets "+(S.plan?S.plan.t.filter(Number.isFinite).map(fp).join(" / "):"–")
     +" · "+settings.inst+" "+settings.tf+(cs?" · "+cs:"")+(out.bars.length>=3?" · "+out.bars.length+" bars":" · no bars (levels only)")+". Check these against Claude's reply.");
+  importMsg($("status").textContent+" The trade ticket is below.");
   $("ticketCard").scrollIntoView({behavior:"smooth",block:"start"});
 }
 $("importBtn").addEventListener("click",()=>importRead($("importText").value));
-$("importClear").addEventListener("click",()=>{$("importText").value=""});
+$("importClear").addEventListener("click",()=>{$("importText").value="";lastImported="";impLen=0;importMsg("")});
+let impT=null,impLen=0;
+$("importText").addEventListener("input",()=>{const v=$("importText").value,jump=v.length-impLen;impLen=v.length;
+  if(jump>=50){clearTimeout(impT);impT=setTimeout(()=>{const t=sq($("importText").value).trim();if(t&&t!==lastImported)importRead(t)},600)}});
 $("importText").addEventListener("paste",()=>setTimeout(()=>importRead($("importText").value),0));
 
 /* ---------- history ---------- */

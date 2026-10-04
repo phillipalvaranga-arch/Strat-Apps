@@ -407,6 +407,8 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
         <div id="txtMode" hidden="">
           <p class="label"><svg class="ic"><use href="#i-file"></use></svg>1 · Claude's answer</p>
           <textarea id="pasteIn" rows="9" placeholder="Paste Claude's full reply here (Ctrl+V). Keep the headings like Verdict, Entry, Stop, Targets."></textarea>
+          <div class="row" style="margin-top:8px;gap:8px;align-items:center"><button type="button" class="go" id="readNow" style="flex:0 0 auto;min-height:44px"><svg class="ic"><use href="#i-zap"></use></svg>Read it</button><span style="font-size:.8rem;color:var(--muted)">Pasted text is read automatically.</span></div>
+          <p class="status" id="pasteNote" role="status" aria-live="polite"></p>
           <label class="row" id="deepWrap" style="font-size:.85rem;color:var(--muted);margin-top:8px;gap:8px;cursor:pointer"><input type="checkbox" id="deepRead" checked="" style="width:18px;height:18px;accent-color:var(--accent)"> Deep read: have Claude double-check it against Strat rules</label>
         </div>
         <input type="file" id="file" accept="image/png,image/jpeg,image/webp" hidden="">
@@ -1081,7 +1083,7 @@ Use null only for a price you truly cannot read from the axis.`}`;
     network:"The app couldn't connect to Claude from this view, so your screenshot wasn't read. Use the 4 steps below: copy the Strat prompt, paste it into a Claude chat with your screenshot, then paste Claude's answer back here."};
 
   go.onclick=async()=>{
-    if(inMode()==="txt")return readPaste();
+    if(inMode()==="txt")return readPasteUI();
     if(!imgBlob){say("Add a chart screenshot first: click the box, drag a file in, or press Ctrl+V.","err");drop.focus();return}
     if(mode==="connecting"){say("Still connecting. Try again in a few seconds.","err");return}
     if(mode==="none"){$("fallback").hidden=false;say(inClaude?HOWTO:DESK,inClaude?"err":"");$("fallback").scrollIntoView({behavior:"smooth",block:"center"});return}
@@ -1130,8 +1132,11 @@ Use null only for a price you truly cannot read from the axis.`}`;
       reasons:arr(j.reasons),risks:arr(j.risks),ftfc:s(j.ftfc)||"–",coach_check:arr(j.coach_check)});
   }
 
+  /* curly quotes from chat apps -> plain quotes so JSON and labels read normally */
+  const sq=x=>String(x||"").replace(/[\u201c\u201d\u201e\u201f\u2033\uff02]/g,'"').replace(/[\u2018\u2019\u201a\u201b\u2032]/g,"'");
   /* Reads Claude's reply with no AI needed: the JSON block if there is one, else the headings. */
   function localParse(t){
+    t=sq(t);
     const fence=t.match(/```(?:json)?\s*([\s\S]*?)```/i);
     for(const cand of [fence&&fence[1],t]){
       if(!cand)continue;
@@ -1141,7 +1146,7 @@ Use null only for a price you truly cannot read from the axis.`}`;
       ["quality",/^(good|bad)\s+(trade|setup)|^trade\s+quality|^grade/i],
       ["verdict",/^(final\s+)?(verdict|call|decision|signal)\b/i],["direction",/^(direction|bias|bullish\s+or\s+bearish|trend)\b/i],
       ["sequence",/^(candle|bar|strat)\s*(labels?|sequence|numbers?)|^last\s+candles|^candles?\b/i],["cond",/^(market\s+)?condition\b/i],["conf",/^confidence\b/i],["size",/^(size|risk|when|note)\b/i],["setup",/^(setup|pattern)\b/i],
-      ["entry",/^(entry|enter|where to enter|buy stop|sell stop)\b/i],["stop",/^stop\b/i],["targets",/^(targets?|take\s*profit|profit\s*targets?|tp\s*[12]?)\b/i],
+      ["entry",/^(entry|enter|where to enter|buy stop|sell stop)\b/i],["stop",/^stop\b/i],["targets",/^((first|second|third|1st|2nd|3rd|next)\s+(profit\s+)?targets?|targets?|take\s*profit|profit\s*targets?|tp\s*[123]?|t[123])\b/i],
       ["alt",/^(if it goes|other way|alternat|invalidat|cancel)/i],["ftfc",/^(timeframe|ftfc|full\s+timeframe|continuity|higher\s+timeframes?)/i],
       ["risks",/^(watch\s*out|risks?|cautions?|warnings?)\b/i],["reasons",/^(why|reasons?|rationale)\b/i]];
     /* first real price in a phrase: skips "1 tick", "2-1-2", "1.5R", "TP1", "$198", "16 points" */
@@ -1162,11 +1167,12 @@ Use null only for a price you truly cannot read from the axis.`}`;
         const hit=KEYS.find(([,re])=>re.test(cells[0]));
         if(hit){cells.slice(1).forEach((v,i)=>{(cols[i]=cols[i]||{})[hit[0]]=((cols[i][hit[0]]?cols[i][hit[0]]+"\n":"")+(/^(tp|target|take)/i.test(cells[0])?cells[0]+" ":"")+v)});cur=null}
         continue}
-      const line=raw.replace(/^\s*\d+[.)]\s+/,"").replace(/^[\s#>*•\-]+/,"").replace(/\*\*/g,"").trim();
+      const line=raw.replace(/^\s*\d+[.)]\s+/,"").replace(/^[\s#>*•\-]+/,"").replace(/\*\*/g,"").replace(/^[^A-Za-z0-9"'(\[{]+/,"").trim();
       if(!line)continue;
       const m=line.match(/^([A-Za-z][A-Za-z0-9 /()&'+,-]{1,48}?)\s*(?::|–|—|-(?=\s))\s*(.*)$/);
       const styled=/^\s*#{1,6}\s/.test(raw)||/^\s*\*\*[^*]+\*\*\s*:?\s*$/.test(raw)||/:\s*$/.test(line);
-      const head=m?m[1]:styled?line.replace(/:\s*$/,""):null;
+      const bare=!m&&!styled&&line.split(/\s+/).length<=3&&!/[.!?,]$/.test(line)&&!/\d{3}/.test(line);
+      const head=m?m[1]:(styled||bare)?line.replace(/:\s*$/,""):null;
       const hit=head&&KEYS.find(([,re])=>re.test(head.trim()));
       if(hit){cur=hit[0];put(cur,m?m[2]:"");continue}
       if(cur)put(cur,line);
@@ -1287,6 +1293,19 @@ ${text.slice(0,20000)}
       else{say(ERR[e?.code]||"Couldn't read that. Try again.","err");if(current&&!current.example)render(current);else pasteFail()}
     }finally{stopBtn.hidden=true;go.disabled=false}
   }
+
+  /* run the read from the paste box and show the outcome right under it */
+  let lastRead="",readT=null;
+  async function readPasteUI(){
+    const t=$("pasteIn").value.trim();lastRead=t;
+    await readPaste();
+    const n=$("pasteNote");n.textContent=status.textContent;n.className=status.className;
+    n.scrollIntoView({behavior:"smooth",block:"center"});
+  }
+  $("readNow").onclick=()=>{if(!go.disabled)readPasteUI()};
+  const autoRead=()=>{clearTimeout(readT);readT=setTimeout(()=>{const t=$("pasteIn").value.trim();if(t.length>=30&&t!==lastRead&&!go.disabled&&inMode()==="txt")readPasteUI()},600)};
+  $("pasteIn").addEventListener("paste",autoRead);
+  $("pasteIn").addEventListener("input",autoRead);
 
   $("copyPrompt").onclick=async()=>{const t=buildPrompt(true),box=$("promptBox");
     try{await navigator.clipboard.writeText(t);toast("Prompt copied")}catch{box.hidden=false;box.value=t;box.focus();box.select();toast("Press Ctrl+C to copy")}};
