@@ -335,7 +335,7 @@ details summary{cursor:pointer;font-weight:600}
             </select></label>
         </div>
         <div class="row">
-          <label class="f">Max risk per trade ($)<input id="risk" type="number" min="1" step="5" value="150"></label>
+          <label class="f">Max risk per trade ($)<input id="risk" type="number" min="1" step="5" value="75"></label>
           <label class="f">Max contracts<input id="maxc" type="number" min="1" step="1" value="3"></label>
         </div>
         <div class="row">
@@ -537,7 +537,9 @@ const S={
   ftfcAI:{M:"?",W:"?",D:"?","60":"?"},
   plan:null, dir:null, basePlan:null, busy:null
 };
-const settings=Object.assign({inst:"MES",tf:"1h",risk:150,maxc:3,minrr:2,stopMode:"full",auto:true},load("sc-settings",{}));
+/* one-time migration: old default max risk $150 -> $75; empty drawdown -> $1,500 */
+if(!load("sc-mig-r75-dd1500",false)){const o=load("sc-settings",null);if(o&&+o.risk===150){o.risk=75;save("sc-settings",o)}const d=load("sc-dd",null);if(d==null||d==="")save("sc-dd",1500);save("sc-mig-r75-dd1500",true)}
+const settings=Object.assign({inst:"MES",tf:"1h",risk:75,maxc:3,minrr:2,stopMode:"full",auto:true},load("sc-settings",{}));
 
 /* ---------- helpers ---------- */
 const inst=()=>INST[settings.inst]||INST.MES;
@@ -709,7 +711,7 @@ function fmtPts(x){return String(+(+x).toFixed(2))}
 const MSK="sc-",GET=(k,d)=>load(k,d),SET=(k,v)=>save(k,v);
 /* trailing-drawdown rule: max $ per trade = drawdown x %; max stop pts = max $ / (point value x contracts) */
 const msUsd=x=>{x=+x;return "$"+(Math.abs(x-Math.round(x))<0.005?Math.round(x).toLocaleString("en-US"):x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))};
-function msCfg(){const dd=parseFloat(GET(MSK+"dd","")),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
+function msCfg(){const dd=parseFloat(GET(MSK+"dd",1500)),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
   return {dd:dd>0?dd:0,pct:pct>0?pct:5,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
 function msLimit(pv,qty){const c=msCfg(),q=Math.max(1,Math.floor(+qty)||1);pv=+pv;
   if(c.dd>0&&c.mode!=="fixed"&&pv>0){const maxD=c.dd*c.pct/100;return {mode:"dd",pts:maxD/(pv*q),maxD,q,pv,pct:c.pct,dd:c.dd}}
@@ -971,7 +973,7 @@ const sel=$("inst");{const grp={};Object.keys(INST).forEach(k=>{(grp[INST[k].g]=
 function syncSettingsUI(){sel.value=settings.inst;$("tf").value=settings.tf;$("risk").value=settings.risk;$("maxc").value=settings.maxc;$("minrr").value=settings.minrr;$("stopMode").value=settings.stopMode;$("auto").checked=settings.auto}
 syncSettingsUI();
 function settingsChanged(re){
-  settings.inst=sel.value;settings.tf=$("tf").value;settings.risk=Math.max(1,num($("risk").value)||150);settings.maxc=Math.max(1,Math.floor(num($("maxc").value)||1));
+  settings.inst=sel.value;settings.tf=$("tf").value;settings.risk=Math.max(1,num($("risk").value)||75);settings.maxc=Math.max(1,Math.floor(num($("maxc").value)||1));
   settings.minrr=Math.max(.5,num($("minrr").value)||2);settings.stopMode=$("stopMode").value;settings.auto=$("auto").checked;save("sc-settings",settings);
   if(re)applyEngine(S.plan&&S.plan.dir);render();
 }

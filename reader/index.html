@@ -521,8 +521,8 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
           <label class="f">Max stop from<select id="rMSMode"><option value="dd">From drawdown</option><option value="fixed">Fixed points</option></select></label>
           <label class="f">Max stop (points)<input type="number" id="rMaxStop" min="0.25" step="0.25" inputmode="decimal" placeholder="25"></label>
           <div class="f full msn" id="rMSInfo" style="margin:0" aria-live="polite"></div>
-          <label class="f full">Max risk per trade: <b id="rMaxLbl">$150</b>
-            <input type="range" id="rMax" min="25" max="1000" step="25" value="150" style="padding:0">
+          <label class="f full">Max risk per trade: <b id="rMaxLbl">$75</b>
+            <input type="range" id="rMax" min="25" max="1000" step="25" value="75" style="padding:0">
           </label>
         </div>
         <div class="rq">Set T1:
@@ -872,9 +872,11 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
   const maxStop=()=>{const v=parseFloat(store.get("strat-max-stop",25));return v>0?v:25};
   const fmtPts=x=>String(+(+x).toFixed(2));
   const MSK="strat-",GET=(k,d)=>store.get(k,d),SET=(k,v)=>store.set(k,v);
+  /* one-time migration (defaults: drawdown $1,500; max risk $75 - the Reader slider is not saved, so nothing to migrate there) */
+  if(!GET(MSK+"mig-r75-dd1500",false)){const d=GET(MSK+"dd",null);if(d==null||d==="")SET(MSK+"dd",1500);SET(MSK+"mig-r75-dd1500",true)}
   /* trailing-drawdown rule: max $ per trade = drawdown x %; max stop pts = max $ / (point value x contracts) */
   const msUsd=x=>{x=+x;return "$"+(Math.abs(x-Math.round(x))<0.005?Math.round(x).toLocaleString("en-US"):x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}))};
-  function msCfg(){const dd=parseFloat(GET(MSK+"dd","")),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
+  function msCfg(){const dd=parseFloat(GET(MSK+"dd",1500)),pct=parseFloat(GET(MSK+"dd-pct",5)),mode=GET(MSK+"ms-mode",null);
     return {dd:dd>0?dd:0,pct:pct>0?pct:5,mode:mode==="dd"||mode==="fixed"?mode:null,fixed:maxStop()}}
   function msLimit(pv,qty){const c=msCfg(),q=Math.max(1,Math.floor(+qty)||1);pv=+pv;
     if(c.dd>0&&c.mode!=="fixed"&&pv>0){const maxD=c.dd*c.pct/100;return {mode:"dd",pts:maxD/(pv*q),maxD,q,pv,pct:c.pct,dd:c.dd}}
