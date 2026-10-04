@@ -659,9 +659,10 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   }
   function preCheck(){
     const box=$('pre'), list=$('preList'), t=$('aiText').value.trim();
-    if(!t){ box.hidden=true; PRE=null; lastApplied=null; lastText=''; planPick=null; $('fromAi').hidden=true; $('pasteMsg').hidden=true; return; }
+    if(!t){ window.PUX&&PUX.clear(); box.hidden=true; PRE=null; lastApplied=null; lastText=''; planPick=null; $('fromAi').hidden=true; $('pasteMsg').hidden=true; return; }
     if(t!==lastText){ lastText=t; planPick=null; }
-    const a=parseAnalysis(t); PRE=a; box.hidden=false;
+    const ntx=!!(window.PUX&&PUX.nonTrade(t)); const a=ntx?{dir:null,lean:null,entry:null,stop:null,tp:null,bull:0,bear:0,plans:[],idx:0,sym:null}:parseAnalysis(t); PRE=a; box.hidden=false;
+    window.PUX&&PUX.report(t,ntx?null:{entry:a.entry!=null,stop:a.stop!=null,target:a.tp!=null});
     // chooser when the text holds more than one plan
     (function(){
       const pk=$('planPick'); pk.innerHTML='';
@@ -748,7 +749,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     $('preUseRow').hidden=!canUse; $('preUseNote').textContent='';
     { const pm=$('pasteMsg'); pm.hidden=false;
       if(a.entry!=null && a.stop!=null && a.entry!==a.stop){ pm.className='fromai pastemsg'; pm.textContent='Plan found: entry '+a.entry+', stop loss '+a.stop+', take profit '+(a._tp!=null?a._tp:a.tp)+'. It\u2019s filled into Trade setup at the top. Check the details below.'; }
-      else { pm.className='fromai pastemsg miss'; pm.textContent='No entry and stop loss prices found in this text, so Trade setup wasn\u2019t changed. Paste Claude\u2019s reply with lines like Entry: 6512.25, Stop: 6498.75, Target: 6530.'; } }
+      else { pm.className='fromai pastemsg miss'; pm.textContent=ntx?PUX.NONTRADE+' Trade setup wasn\u2019t changed.':'No entry and stop loss prices found in this text, so Trade setup wasn\u2019t changed. Paste Claude\u2019s reply with lines like Entry: 6512.25, Stop: 6498.75, Target: 6530.'; } }
   }
   $('preUse').addEventListener('click',()=>{
     if(!PRE) return;
@@ -851,4 +852,92 @@ Keep the whole answer under 250 words. Do not promise results; this is analysis,
 })();
 </script>
 
+
+<script>/* paste-ux */
+/* Paste-from-Claude helper (UX only: never computes or fills prices itself; the app's own parser does that) */
+(function(){
+"use strict";
+var LINES="Symbol and timeframe: \nDirection: Bullish or Bearish\nSetup: \nVerdict: Trade, Wait or No trade\nEntry: \nStop: \nTarget 1: \nTarget 2: \nTimeframe continuity: ";
+var FIX="Please restate your chart analysis above in exactly this format, using only levels you already identified from the chart (write none if you didn't identify one). Write prices as plain numbers.\n"+LINES;
+var NONTRADE="This doesn't look like a chart read \u2014 no prices found.";
+var KW=/\b(entry|enter|entering|stop|stops|target|targets|take[\s-]?profit|tp\s*\d?|t\d|buy|sell|long|short|trigger|high|low|support|resistance|level|above|below|break|breaks|breakout)\b/i;
+var VOCAB=[/\bbullish\b/i,/\bbearish\b/i,/\b[123]-[123](-[123])?\b/,/\binside bar\b/i,/\boutside bar\b/i,/\b2u\b/i,/\b2d\b/i,/\bcontinuity\b/i,/\bftfc\b/i,/\bsetup\b/i,/\bcandles?\b/i,/\bverdict\b/i,/\b(up|down)trend\b/i,/\bsupport\b/i,/\bresistance\b/i,/\bswing\b/i,/\bbreakout\b/i,/\bstrat\b/i,/\breversal\b/i,/\bhigher highs?\b/i,/\blower lows?\b/i];
+function norm(t){return String(t||"").replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'").replace(/(\d),(?=\d{3}\b)/g,"$1").replace(/\r/g,"")}
+/* price-like numbers that sit next to a level word (entry/stop/target/high/low...) */
+function levelPrices(t){var lines=t.split("\n"),seen={},n=0,prev="";
+  for(var i=0;i<lines.length;i++){var l=lines[i];if(!l.trim())continue;var re=/(?<![\w.$-])\d+(?:\.\d+)?/g,m;
+    while((m=re.exec(l))){var after=l.slice(m.index+m[0].length),dig=m[0].replace(".","").length;
+      if(dig<3)continue;
+      if(/^\s*-?\s*(R\b|x\b|%|ticks?\b|pts?\b|points?\b|contracts?\b|min|minutes?\b|hours?\b|[hm]\b|to\s*1\b|:\s*1\b|-\d)/i.test(after))continue;
+      var before=l.slice(Math.max(0,m.index-80),m.index);
+      if(KW.test(before)||(!/[A-Za-z]{3}/.test(l.slice(0,m.index))&&KW.test(prev))){if(!seen[m[0]]){seen[m[0]]=1;n++}}}
+    prev=l}
+  return n}
+function classify(text){var t=norm(text);
+  var json=/"(entry_price|stop_price|target1_price|entry|stop)"\s*:\s*"?-?\d/i.test(t);
+  var n=levelPrices(t),v=0;VOCAB.forEach(function(r){if(r.test(t))v++});
+  return {prices:n,vocab:v,json:json,nonTrade:!json&&n<2&&!(n>=1&&v>=1)&&v<2}}
+var cfg=null,box=null,hint=null,toastEl=null;
+function $(id){return document.getElementById(id)}
+function toast(msg){if(!toastEl){toastEl=document.createElement("div");toastEl.className="pux-toast";toastEl.setAttribute("role","status");document.body.appendChild(toastEl)}
+  toastEl.textContent=msg;toastEl.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){toastEl.hidden=true},2200)}
+function copyText(text,where){
+  function fallback(){var ta=where.querySelector(".pux-copybox");if(!ta){ta=document.createElement("textarea");ta.className="pux-copybox";ta.rows=6;ta.readOnly=true;where.appendChild(ta)}
+    ta.hidden=false;ta.value=text;ta.focus();ta.select();var ok=false;try{ok=document.execCommand("copy")}catch(e){}
+    toast(ok?"Copied \u2713":"Select the text in the box and copy it (long-press \u2192 Copy)")}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){var c=where.querySelector(".pux-copybox");if(c)c.hidden=true;toast("Copied \u2713")},fallback)}else fallback()}
+function hide(){if(box){box.hidden=true;box.innerHTML=""}}
+function showBox(kind,html,btnLabel,btnText){if(!box)return;box.hidden=false;box.className="pux-box pux-"+kind;
+  box.innerHTML='<p class="pux-msg"></p><div class="pux-row"><button type="button" class="pux-btn pux-copyfix"></button></div>';
+  box.querySelector(".pux-msg").innerHTML=html;var b=box.querySelector(".pux-copyfix");b.textContent=btnLabel;
+  b.addEventListener("click",function(){copyText(typeof btnText==="function"?btnText():btnText,box)})}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+/* called by the app after its own parser ran. fields = {entry,stop,target} booleans from the app's parse, or null */
+function report(text,fields){if(!cfg)return;text=String(text||"");if(!text.trim()){hide();return}
+  if(hint)hint.hidden=true;
+  var c=classify(text);
+  if(c.nonTrade){showBox("warn","<b>"+esc(NONTRADE)+"</b> Nothing was filled in. Tap \u2018Copy Strat prompt\u2019, paste it into Claude with your TradingView screenshot, then paste Claude\u2019s whole answer here.","\ud83d\udccb Copy Strat prompt",cfg.prompt);return}
+  if(!fields){hide();return}
+  var miss=[];if(!fields.entry)miss.push("Entry");if(!fields.stop)miss.push("Stop");if(!fields.target)miss.push("Target");
+  if(!miss.length){hide();return}
+  showBox("warn","<b>Claude\u2019s answer is missing: "+esc(miss.join(", "))+".</b> Tap \u2018Copy fix-up prompt\u2019 and paste it into the same Claude chat. Then copy Claude\u2019s new answer and tap \ud83d\udccb Paste from Claude again.","Copy fix-up prompt",FIX)}
+function nonTrade(text){return classify(text).nonTrade}
+function scrollTo(el){if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"center"})}
+function showHint(){var ta=$(cfg.ta);cfg.show();if(hint){hint.hidden=false}ta.focus();scrollTo(ta)}
+function pasteClick(){
+  var done=function(text){if(!text||!String(text).trim()){showHint();toast("Clipboard is empty or blocked \u2014 long-press the box and Paste");return}
+    cfg.show();var ta=$(cfg.ta);ta.value=String(text);if(hint)hint.hidden=true;cfg.run(ta.value);
+    setTimeout(function(){scrollTo(box&&!box.hidden?box:cfg.result())},450)};
+  if(navigator.clipboard&&navigator.clipboard.readText){navigator.clipboard.readText().then(done,function(){showHint()})}else showHint()}
+function init(c){cfg=c;
+  var st=document.createElement("style");st.textContent=".pux-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px auto;padding:0 12px;max-width:1400px;box-sizing:border-box}"+
+   ".pux-btn{font:600 16px/1.2 system-ui,-apple-system,'Segoe UI',sans-serif;min-height:48px;padding:10px 18px;border-radius:10px;border:2px solid #b8860b;background:#fff;color:#1b1b1b;cursor:pointer}"+
+   ".pux-btn.pux-main{background:#f0b429;border-color:#c98f00;color:#14110a;font-size:18px;padding:10px 22px}"+
+   ".pux-btn:focus-visible{outline:3px solid #1f6fe5;outline-offset:2px}.pux-bar small{font:13px system-ui,sans-serif;opacity:.8;color:inherit}"+
+   ".pux-box{margin:10px 0;padding:12px 14px;border-radius:10px;border:2px solid #e0b400;background:#fff6c7;color:#4a3800;font:15px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif}"+
+   ".pux-box .pux-msg{margin:0 0 10px}.pux-row{display:flex;gap:8px;flex-wrap:wrap}.pux-copybox{width:100%;margin-top:8px;font:13px monospace;box-sizing:border-box}"+
+   ".pux-hint{margin:6px 0;padding:8px 12px;border-radius:8px;background:#fff6c7;border:2px dashed #e0b400;color:#4a3800;font:600 15px system-ui,sans-serif}"+
+   ".pux-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#14110a;color:#fff;padding:10px 18px;border-radius:999px;font:600 15px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3)}";
+  document.head.appendChild(st);
+  var bar=document.createElement("div");bar.className="pux-bar";bar.id="puxBar";
+  bar.innerHTML='<button type="button" class="pux-btn pux-main" id="puxPaste">\ud83d\udccb Paste from Claude</button><button type="button" class="pux-btn" id="puxPrompt">Copy Strat prompt</button><small>Step 1: copy the prompt and give it to Claude with your chart. Step 2: copy Claude\u2019s answer and tap Paste.</small>';
+  var h=document.querySelector("header");if(h&&h.parentNode)h.insertAdjacentElement("afterend",bar);else document.body.insertBefore(bar,document.body.firstChild);
+  $("puxPaste").addEventListener("click",pasteClick);
+  $("puxPrompt").addEventListener("click",function(){copyText(cfg.prompt(),bar)});
+  var ta=$(cfg.ta);hint=document.createElement("p");hint.className="pux-hint";hint.id="puxHint";hint.hidden=true;hint.textContent="\ud83d\udc47 Long-press and Paste here (or press Ctrl+V)";
+  ta.parentNode.insertBefore(hint,ta);
+  ta.addEventListener("input",function(){hint.hidden=true});
+  box=document.createElement("div");box.id="puxBox";box.hidden=true;box.setAttribute("role","status");box.setAttribute("aria-live","polite");
+  var a=$(cfg.anchor);a.insertAdjacentElement("afterend",box);
+}
+window.PUX={init:init,report:report,nonTrade:nonTrade,classify:classify,FIX:FIX,LINES:LINES,NONTRADE:NONTRADE,clear:hide};
+})();
+
+(function(){var TPL="You are an expert day-trading coach who uses Rob Smith's \"The Strat\" method. Analyze the chart screenshot I'm attaching.\n\nTrader context:\n- Symbol: {{SYM}}\n- Contracts the trader plans to use: not set; size by risk\n- Timeframe of the screenshot: {{TF}}\n- Higher timeframes the trader checked: not given\n- Risk style: balanced\n- Newer trader, trades micro futures (e.g. MES/MNQ/MGC) on a prop-firm evaluation, so protecting capital matters.\n- Notes: none\n\nSteps:\n0. Read the chart header / legend: the ticker (map futures like \"MNQ1!\", \"MNQZ2026\", \"Micro E-mini Nasdaq\" to MNQ; \"MGC1!\" to MGC; \"ES1!\" (E-mini S&P) to ES vs \"MES1!\" (Micro) to MES, etc.), the timeframe (TradingView \"15\" = 15m, \"60\" or \"1h\" = 1h, \"240\" = 4h, \"D\" = Daily, \"W\" = Weekly), and the current/last price (highlighted label on the right price axis). If the header disagrees with the trader context above, trust the screenshot.\n1. Read the most recent 5-8 candles, right-most is newest. Label each in Strat terms: \"1\" (inside), \"2U\", \"2D\", \"3\" (outside), comparing each to the candle before it.\n2. Identify any Strat actionable setup (2-1-2, 3-1-2, 2-2 reversal, 1-2-2 RevStrat, 3-2-2, inside bar, shooter/hammer) or say none.\n3. Give direction bias, whether it is a good time to trade (trade / wait / no trade), and a concrete plan: WHERE TO ENTER (usually a buy stop 1 tick above the trigger bar high for longs, sell stop 1 tick below the trigger bar low for shorts), WHERE THE STOP LOSS GOES (other side of the trigger bar), TAKE PROFIT 1 and 2 (prior swing highs/lows or visible levels; aim for T1 at least 1.5x the risk). Read every one of these as a NUMBER off the price axis and round to the instrument tick ({{SYM}} tick = {{TICK}}). Give the planned levels even when the verdict is wait.\n4. Say what full timeframe continuity you can or cannot confirm.\n4b. MARKET STRUCTURE: from the visible swings, is it an uptrend (higher highs + higher lows), downtrend (lower highs + lower lows), range, or broadening (Strat megaphone: higher highs AND lower lows)? List the last 4-6 swing points oldest to newest as HH/HL/LH/LL. Note the latest break of structure (BOS: price breaks a swing in the trend direction) or change of character (CHoCH: first break against the trend) and its price.\n4c. PRICE STRUCTURE: read the key support and resistance levels off the price axis (swing highs/lows, range top/bottom, prior day high/low if labeled, levels price reacted to several times). Up to 6 levels, each a number. Say where price sits now (at support, at resistance, mid-range, breaking out, breaking down). Place targets at or just before resistance (longs) or support (shorts), and don't enter straight into a level.\n5. Grade it: is this a GOOD trade (clean Strat setup, with the trend/continuity, sensible stop, at least ~1.5R to target 1) or a BAD trade (choppy, against the higher timeframes, no clear trigger, poor reward)? A setup that is good but not yet triggered is still \"good\" with verdict \"wait\".\n6. Be honest: if the chart is choppy, unclear or unreadable, say wait or no trade. Don't force a trade.\n\nAnswer in plain language with headings: Symbol and timeframe you see, Market structure (trend + swings + BOS/CHoCH), Price structure (key support/resistance prices), Bullish or Bearish, Good trade or Bad trade (and why), Verdict (Trade / Wait / No trade), Candle labels, Setup, Entry, Stop, Targets, If it goes the other way, Timeframe continuity, Watch out.\n\nAt the very end, add a JSON code block with one object in this exact shape so my trading app can read it:\n{\"verdict\":\"trade\"|\"wait\"|\"no trade\",\"trade_quality\":\"good\"|\"bad\",\"quality_reason\":\"one plain sentence why it is a good or bad trade\",\"headline\":\"max 8 words\",\"summary\":\"1-2 plain sentences\",\"direction\":\"Bullish\"|\"Bearish\"|\"Neutral\",\"confidence\":\"Low\"|\"Medium\"|\"High\",\"market_condition\":\"2-4 words\",\"sequence\":[\"2U\",\"1\"],\"setup\":\"name or None\",\"entry\":\"text\",\"stop\":\"text\",\"target1\":\"text\",\"target2\":\"text\",\"entry_price\":number|null,\"stop_price\":number|null,\"target1_price\":number|null,\"target2_price\":number|null,\"side\":\"long\"|\"short\"|null,\"order_type\":\"buy stop\"|\"sell stop\"|\"buy limit\"|\"sell limit\"|\"market\",\"chart_symbol\":\"MNQ\"|\"MES\"|\"MYM\"|\"M2K\"|\"NQ\"|\"ES\"|\"YM\"|\"RTY\"|\"MGC\"|\"QO\"|\"GC\"|\"SIL\"|\"QI\"|\"SI\"|\"MHG\"|\"HG\"|\"MCL\"|\"QM\"|\"CL\"|\"MNG\"|\"QG\"|\"NG\"|\"MBT\"|\"MET\"|\"M6E\"|\"6E\"|\"M6B\"|\"6B\"|\"SPY\"|\"QQQ\"|\"Other\"|null,\"chart_timeframe\":\"1m\"|\"5m\"|\"15m\"|\"30m\"|\"1h\"|\"4h\"|\"Daily\"|\"Weekly\"|null,\"last_price\":number|null,\"alt_scenario\":\"text\",\"reasons\":[\"...\"],\"risks\":[\"...\"],\"ftfc\":\"text\",\"market_structure\":{\"trend\":\"uptrend\"|\"downtrend\"|\"range\"|\"broadening\",\"swings\":[\"HL\",\"HH\"],\"last_event\":\"BOS up\"|\"BOS down\"|\"CHoCH up\"|\"CHoCH down\"|\"none\",\"event_price\":number|null,\"note\":\"1 plain sentence\"},\"price_structure\":{\"levels\":[{\"price\":number,\"kind\":\"resistance\"|\"support\",\"label\":\"2-4 words, e.g. swing high\",\"strength\":\"strong\"|\"medium\"|\"weak\"}],\"location\":\"at support\"|\"at resistance\"|\"mid-range\"|\"breaking out\"|\"breaking down\",\"note\":\"1 plain sentence\"}}\nUse null for any price you cannot read from the axis.\n\nAfter the JSON block, finish your answer with these plain lines in exactly this format, so my app can read it even if the JSON gets cut off. Use only levels you read from the chart and write none for any you can't read. Write prices as plain numbers.\nSymbol and timeframe: \nDirection: Bullish or Bearish\nSetup: \nVerdict: Trade, Wait or No trade\nEntry: \nStop: \nTarget 1: \nTarget 2: \nTimeframe continuity: ",TK={MES:.25,MNQ:.25,ES:.25,NQ:.25,MYM:1,YM:1,M2K:.1,RTY:.1,MGC:.1,GC:.1,SIL:.005,SI:.005,MCL:.01,CL:.01};
+PUX.init({ta:"aiText",anchor:"pasteMsg",show:function(){},
+ run:function(){document.getElementById("aiText").dispatchEvent(new Event("paste"))},
+ result:function(){var f=document.getElementById("fromAi");return f&&!f.hidden?f:document.getElementById("pasteMsg")},
+ prompt:function(){var el=document.getElementById("inst"),s=el&&el.value&&el.value!=="CUSTOM"?el.value:"the chart's symbol";var tk=TK[s]!=null?String(TK[s]):"its tick size";
+  return TPL.split("{{SYM}}").join(s).split("{{TF}}").join("read it from the chart header").split("{{TICK}}").join(tk)}});})();
+</script>
 </body></html>

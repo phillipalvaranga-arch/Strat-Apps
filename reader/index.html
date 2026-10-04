@@ -1109,12 +1109,24 @@ Answer in plain language with headings: Symbol and timeframe you see, Market str
 
 At the very end, add a JSON code block with one object in this exact shape so my trading app can read it:
 ${SCHEMA}
-Use null for any price you cannot read from the axis.`:`
+Use null for any price you cannot read from the axis.
+
+After the JSON block, finish your answer with these plain lines in exactly this format, so my app can read it even if the JSON gets cut off. Use only levels you read from the chart and write none for any you can't read. Write prices as plain numbers.
+Symbol and timeframe: 
+Direction: Bullish or Bearish
+Setup: 
+Verdict: Trade, Wait or No trade
+Entry: 
+Stop: 
+Target 1: 
+Target 2: 
+Timeframe continuity: `:`
 Reply with ONLY one JSON object with exactly these keys:
 ${SCHEMA}
 Use null only for a price you truly cannot read from the axis.`}`;
   }
 
+  window.PUX_READER_PROMPT=()=>buildPrompt(true);
   const ERR={cancelled:"Stopped.",not_granted:"Permission to use Claude was declined. Reload and choose Allow, or use the backup way.",
     sampling_disabled:"Claude access from pages is off for this account.",images_unavailable:"This view can't send images.",
     rate_limited:"Usage limit hit. Try again in a bit.",image_rejected:"That image couldn't be read. Try a PNG or JPG.",
@@ -1317,6 +1329,8 @@ ${text.slice(0,20000)}
     if(t.length<30){say("Paste Claude's full reply into the box first.","err");$("pasteIn").focus();return}
     if(mode==="connecting"){say("Still connecting. Try again in a few seconds.","err");return}
     const local=localParse(t),canDeep=canAsk()&&$("deepRead").checked;
+    if(window.PUX&&PUX.nonTrade(t)){say(PUX.NONTRADE+" Nothing was filled in.","err");pasteFail();PUX.report(t,null);return}
+    {const P0=local?plan(local):null;window.PUX&&PUX.report(t,{entry:!!(P0&&P0.e!=null),stop:!!(P0&&P0.s!=null),target:!!(P0&&P0.t1!=null)})}
     if(!canDeep){
       if(!local){say("Couldn't find the analysis in that text. Paste Claude's whole reply with its headings (Verdict, Entry, Stop, Targets).","err");pasteFail();return}
       finish(local,"Read from your pasted answer.");return;
@@ -1955,4 +1969,91 @@ ${text.slice(0,20000)}
     if(mode==="none"&&!imgBlob){const b=$("inSeg").querySelector('[data-v="txt"]');if(b&&b.getAttribute("aria-pressed")!=="true")b.click();$("fallback").hidden=false}
   })();
 })();
-</script></body></html>
+</script>
+<script>/* paste-ux */
+/* Paste-from-Claude helper (UX only: never computes or fills prices itself; the app's own parser does that) */
+(function(){
+"use strict";
+var LINES="Symbol and timeframe: \nDirection: Bullish or Bearish\nSetup: \nVerdict: Trade, Wait or No trade\nEntry: \nStop: \nTarget 1: \nTarget 2: \nTimeframe continuity: ";
+var FIX="Please restate your chart analysis above in exactly this format, using only levels you already identified from the chart (write none if you didn't identify one). Write prices as plain numbers.\n"+LINES;
+var NONTRADE="This doesn't look like a chart read \u2014 no prices found.";
+var KW=/\b(entry|enter|entering|stop|stops|target|targets|take[\s-]?profit|tp\s*\d?|t\d|buy|sell|long|short|trigger|high|low|support|resistance|level|above|below|break|breaks|breakout)\b/i;
+var VOCAB=[/\bbullish\b/i,/\bbearish\b/i,/\b[123]-[123](-[123])?\b/,/\binside bar\b/i,/\boutside bar\b/i,/\b2u\b/i,/\b2d\b/i,/\bcontinuity\b/i,/\bftfc\b/i,/\bsetup\b/i,/\bcandles?\b/i,/\bverdict\b/i,/\b(up|down)trend\b/i,/\bsupport\b/i,/\bresistance\b/i,/\bswing\b/i,/\bbreakout\b/i,/\bstrat\b/i,/\breversal\b/i,/\bhigher highs?\b/i,/\blower lows?\b/i];
+function norm(t){return String(t||"").replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'").replace(/(\d),(?=\d{3}\b)/g,"$1").replace(/\r/g,"")}
+/* price-like numbers that sit next to a level word (entry/stop/target/high/low...) */
+function levelPrices(t){var lines=t.split("\n"),seen={},n=0,prev="";
+  for(var i=0;i<lines.length;i++){var l=lines[i];if(!l.trim())continue;var re=/(?<![\w.$-])\d+(?:\.\d+)?/g,m;
+    while((m=re.exec(l))){var after=l.slice(m.index+m[0].length),dig=m[0].replace(".","").length;
+      if(dig<3)continue;
+      if(/^\s*-?\s*(R\b|x\b|%|ticks?\b|pts?\b|points?\b|contracts?\b|min|minutes?\b|hours?\b|[hm]\b|to\s*1\b|:\s*1\b|-\d)/i.test(after))continue;
+      var before=l.slice(Math.max(0,m.index-80),m.index);
+      if(KW.test(before)||(!/[A-Za-z]{3}/.test(l.slice(0,m.index))&&KW.test(prev))){if(!seen[m[0]]){seen[m[0]]=1;n++}}}
+    prev=l}
+  return n}
+function classify(text){var t=norm(text);
+  var json=/"(entry_price|stop_price|target1_price|entry|stop)"\s*:\s*"?-?\d/i.test(t);
+  var n=levelPrices(t),v=0;VOCAB.forEach(function(r){if(r.test(t))v++});
+  return {prices:n,vocab:v,json:json,nonTrade:!json&&n<2&&!(n>=1&&v>=1)&&v<2}}
+var cfg=null,box=null,hint=null,toastEl=null;
+function $(id){return document.getElementById(id)}
+function toast(msg){if(!toastEl){toastEl=document.createElement("div");toastEl.className="pux-toast";toastEl.setAttribute("role","status");document.body.appendChild(toastEl)}
+  toastEl.textContent=msg;toastEl.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){toastEl.hidden=true},2200)}
+function copyText(text,where){
+  function fallback(){var ta=where.querySelector(".pux-copybox");if(!ta){ta=document.createElement("textarea");ta.className="pux-copybox";ta.rows=6;ta.readOnly=true;where.appendChild(ta)}
+    ta.hidden=false;ta.value=text;ta.focus();ta.select();var ok=false;try{ok=document.execCommand("copy")}catch(e){}
+    toast(ok?"Copied \u2713":"Select the text in the box and copy it (long-press \u2192 Copy)")}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){var c=where.querySelector(".pux-copybox");if(c)c.hidden=true;toast("Copied \u2713")},fallback)}else fallback()}
+function hide(){if(box){box.hidden=true;box.innerHTML=""}}
+function showBox(kind,html,btnLabel,btnText){if(!box)return;box.hidden=false;box.className="pux-box pux-"+kind;
+  box.innerHTML='<p class="pux-msg"></p><div class="pux-row"><button type="button" class="pux-btn pux-copyfix"></button></div>';
+  box.querySelector(".pux-msg").innerHTML=html;var b=box.querySelector(".pux-copyfix");b.textContent=btnLabel;
+  b.addEventListener("click",function(){copyText(typeof btnText==="function"?btnText():btnText,box)})}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+/* called by the app after its own parser ran. fields = {entry,stop,target} booleans from the app's parse, or null */
+function report(text,fields){if(!cfg)return;text=String(text||"");if(!text.trim()){hide();return}
+  if(hint)hint.hidden=true;
+  var c=classify(text);
+  if(c.nonTrade){showBox("warn","<b>"+esc(NONTRADE)+"</b> Nothing was filled in. Tap \u2018Copy Strat prompt\u2019, paste it into Claude with your TradingView screenshot, then paste Claude\u2019s whole answer here.","\ud83d\udccb Copy Strat prompt",cfg.prompt);return}
+  if(!fields){hide();return}
+  var miss=[];if(!fields.entry)miss.push("Entry");if(!fields.stop)miss.push("Stop");if(!fields.target)miss.push("Target");
+  if(!miss.length){hide();return}
+  showBox("warn","<b>Claude\u2019s answer is missing: "+esc(miss.join(", "))+".</b> Tap \u2018Copy fix-up prompt\u2019 and paste it into the same Claude chat. Then copy Claude\u2019s new answer and tap \ud83d\udccb Paste from Claude again.","Copy fix-up prompt",FIX)}
+function nonTrade(text){return classify(text).nonTrade}
+function scrollTo(el){if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"center"})}
+function showHint(){var ta=$(cfg.ta);cfg.show();if(hint){hint.hidden=false}ta.focus();scrollTo(ta)}
+function pasteClick(){
+  var done=function(text){if(!text||!String(text).trim()){showHint();toast("Clipboard is empty or blocked \u2014 long-press the box and Paste");return}
+    cfg.show();var ta=$(cfg.ta);ta.value=String(text);if(hint)hint.hidden=true;cfg.run(ta.value);
+    setTimeout(function(){scrollTo(box&&!box.hidden?box:cfg.result())},450)};
+  if(navigator.clipboard&&navigator.clipboard.readText){navigator.clipboard.readText().then(done,function(){showHint()})}else showHint()}
+function init(c){cfg=c;
+  var st=document.createElement("style");st.textContent=".pux-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px auto;padding:0 12px;max-width:1400px;box-sizing:border-box}"+
+   ".pux-btn{font:600 16px/1.2 system-ui,-apple-system,'Segoe UI',sans-serif;min-height:48px;padding:10px 18px;border-radius:10px;border:2px solid #b8860b;background:#fff;color:#1b1b1b;cursor:pointer}"+
+   ".pux-btn.pux-main{background:#f0b429;border-color:#c98f00;color:#14110a;font-size:18px;padding:10px 22px}"+
+   ".pux-btn:focus-visible{outline:3px solid #1f6fe5;outline-offset:2px}.pux-bar small{font:13px system-ui,sans-serif;opacity:.8;color:inherit}"+
+   ".pux-box{margin:10px 0;padding:12px 14px;border-radius:10px;border:2px solid #e0b400;background:#fff6c7;color:#4a3800;font:15px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif}"+
+   ".pux-box .pux-msg{margin:0 0 10px}.pux-row{display:flex;gap:8px;flex-wrap:wrap}.pux-copybox{width:100%;margin-top:8px;font:13px monospace;box-sizing:border-box}"+
+   ".pux-hint{margin:6px 0;padding:8px 12px;border-radius:8px;background:#fff6c7;border:2px dashed #e0b400;color:#4a3800;font:600 15px system-ui,sans-serif}"+
+   ".pux-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#14110a;color:#fff;padding:10px 18px;border-radius:999px;font:600 15px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.3)}";
+  document.head.appendChild(st);
+  var bar=document.createElement("div");bar.className="pux-bar";bar.id="puxBar";
+  bar.innerHTML='<button type="button" class="pux-btn pux-main" id="puxPaste">\ud83d\udccb Paste from Claude</button><button type="button" class="pux-btn" id="puxPrompt">Copy Strat prompt</button><small>Step 1: copy the prompt and give it to Claude with your chart. Step 2: copy Claude\u2019s answer and tap Paste.</small>';
+  var h=document.querySelector("header");if(h&&h.parentNode)h.insertAdjacentElement("afterend",bar);else document.body.insertBefore(bar,document.body.firstChild);
+  $("puxPaste").addEventListener("click",pasteClick);
+  $("puxPrompt").addEventListener("click",function(){copyText(cfg.prompt(),bar)});
+  var ta=$(cfg.ta);hint=document.createElement("p");hint.className="pux-hint";hint.id="puxHint";hint.hidden=true;hint.textContent="\ud83d\udc47 Long-press and Paste here (or press Ctrl+V)";
+  ta.parentNode.insertBefore(hint,ta);
+  ta.addEventListener("input",function(){hint.hidden=true});
+  box=document.createElement("div");box.id="puxBox";box.hidden=true;box.setAttribute("role","status");box.setAttribute("aria-live","polite");
+  var a=$(cfg.anchor);a.insertAdjacentElement("afterend",box);
+}
+window.PUX={init:init,report:report,nonTrade:nonTrade,classify:classify,FIX:FIX,LINES:LINES,NONTRADE:NONTRADE,clear:hide};
+})();
+
+PUX.init({ta:"pasteIn",anchor:"pasteNote",
+ show:function(){var p=document.querySelector('[data-pane="analyze"]');if(p&&p.hidden){var t=document.querySelector('.tab[data-tab="analyze"]');if(t)t.click()}if(document.getElementById("txtMode").hidden)document.querySelector('#inSeg button[data-v="txt"]').click()},
+ run:function(){document.getElementById("readNow").click()},
+ result:function(){return document.getElementById("pasteNote")},
+ prompt:function(){return window.PUX_READER_PROMPT?window.PUX_READER_PROMPT():""}});
+</script>
+</body></html>
