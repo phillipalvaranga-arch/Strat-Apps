@@ -14,6 +14,19 @@
 .v2tr li{margin:3px 0}
 .v2tr .cap{margin:6px 0 0;font-size:.78rem;color:var(--muted)}
 </style>
+<style id="ptRefCss">
+.ptref{margin-top:12px;border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:0;font-size:.85rem}
+.ptref>summary{cursor:pointer;padding:9px 12px;font-weight:600;list-style:revert;user-select:none}
+.ptref-body{padding:0 12px 10px}
+.ptref-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ptref table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:300px}
+.ptref th,.ptref td{padding:5px 4px;font-size:.8rem;border-bottom:1px solid rgba(128,128,128,.25);text-align:right;white-space:nowrap}
+.ptref th{font-size:.7rem;font-weight:600;opacity:.8;white-space:normal;vertical-align:bottom;text-transform:none;letter-spacing:0;line-height:1.25}
+.ptref th:first-child,.ptref td:first-child{text-align:left}
+.ptref tr.ptref-on td{background:rgba(80,160,255,.18);font-weight:700}
+.ptref tr.ptref-on td:first-child{box-shadow:inset 3px 0 0 rgba(80,160,255,.9)}
+.ptref-note{margin:8px 0 0;font-size:.78rem;opacity:.85}
+</style>
 
 <!-- installable web app --><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b1428"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="icon" type="image/png" sizes="512x512" href="icon-512.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Chart Reader"><script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(e){console.warn("SW registration failed",e)})})}</script>
 </head><body>
@@ -532,6 +545,17 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
         </div>
         <p class="note" id="rNote"></p>
         <p class="note">Tip: drag the lines on the price ladder, or click a line and use the ↑ ↓ keys (Shift = 4 ticks).</p>
+<details class="ptref" id="ptRef" open>
+  <summary>📏 Point reference</summary>
+  <div class="ptref-body">
+    <p class="ptref-note" style="margin:0 0 6px">Your max risk per trade: <b id="ptRefRisk">$100</b></p>
+    <div class="ptref-wrap"><table>
+      <thead><tr><th>Contract</th><th>$ per point</th><th>Tick size</th><th>$ per tick</th><th>Points for your max risk (1 contract)</th><th>(2 contracts)</th></tr></thead>
+      <tbody id="ptRefBody"></tbody>
+    </table></div>
+    <p class="ptref-note">Max stop in points = max $ risk ÷ ($ per point × contracts)</p>
+  </div>
+</details>
       </div>
       <div class="panel">
         <div class="row" style="justify-content:space-between;align-items:flex-end">
@@ -2055,5 +2079,24 @@ PUX.init({ta:"pasteIn",anchor:"pasteNote",
  run:function(){document.getElementById("readNow").click()},
  result:function(){return document.getElementById("pasteNote")},
  prompt:function(){return window.PUX_READER_PROMPT?window.PUX_READER_PROMPT():""}});
+</script>
+<script id="ptRefJs">
+/* Point reference card: display only. Reads the max-risk box and contract picker; never writes to app state. */
+(function(){try{
+  var ROWS=[["NQ",20,0.25],["MNQ",2,0.25],["ES",50,0.25],["MES",5,0.25],["GC",100,0.10],["MGC",10,0.10]];
+  var getRisk=function(){var e=document.getElementById('rMax');return e?parseFloat(e.value):NaN}, getSym=function(){var e=document.getElementById('rInst'),o=e&&e.selectedOptions&&e.selectedOptions[0];return o?o.dataset.sym||'':''}, KEY="strat-ptref-open";
+  var body=document.getElementById("ptRefBody"),det=document.getElementById("ptRef"),lbl=document.getElementById("ptRefRisk");if(!body||!det)return;
+  function f(n,d){return Number(n).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:d==null?2:d})}
+  function usd(n){return "$"+f(n)}
+  var last="";
+  function render(){var r=NaN,s="";try{r=getRisk()}catch(e){}try{s=String(getSym()||"").toUpperCase()}catch(e){}
+    var ok=isFinite(r)&&r>0,k=(ok?r:"x")+"|"+s;if(k===last)return;last=k;
+    if(lbl)lbl.textContent=ok?usd(r):"—";
+    body.innerHTML=ROWS.map(function(w){var on=w[0]===s;return '<tr'+(on?' class="ptref-on" aria-current="true"':'')+'><td>'+w[0]+(on?' ◀':'')+'</td><td>'+usd(w[1])+'</td><td>'+w[2].toFixed(2)+'</td><td>'+(function(t){return t%1?"$"+t.toFixed(2):usd(t)})(Math.round(w[1]*w[2]*100)/100)+'</td><td>'+(ok?f(r/w[1]):"—")+'</td><td>'+(ok?f(r/(w[1]*2)):"—")+'</td></tr>'}).join("")}
+  try{var st=localStorage.getItem(KEY);if(st==="0")det.open=false}catch(e){}
+  det.addEventListener("toggle",function(){try{localStorage.setItem(KEY,det.open?"1":"0")}catch(e){}});
+  document.addEventListener("input",render,true);document.addEventListener("change",render,true);
+  render();setInterval(render,700);
+}catch(e){}})();
 </script>
 </body></html>

@@ -111,6 +111,19 @@ window.V2KIT=(function(){
   return {esc:esc,calcSetup:calcSetup,group:group,csv:csv,csvCell:csvCell,download:download,stamp:stamp,when:when,toast:toast,resultsHTML:resultsHTML,trackHTML:trackHTML,outcomeButtons:outcomeButtons,outcomeLabel:outcomeLabel};
 })();
 </script>
+<style id="ptRefCss">
+.ptref{margin-top:12px;border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:0;font-size:.85rem}
+.ptref>summary{cursor:pointer;padding:9px 12px;font-weight:600;list-style:revert;user-select:none}
+.ptref-body{padding:0 12px 10px}
+.ptref-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ptref table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:300px}
+.ptref th,.ptref td{padding:5px 4px;font-size:.8rem;border-bottom:1px solid rgba(128,128,128,.25);text-align:right;white-space:nowrap}
+.ptref th{font-size:.7rem;font-weight:600;opacity:.8;white-space:normal;vertical-align:bottom;text-transform:none;letter-spacing:0;line-height:1.25}
+.ptref th:first-child,.ptref td:first-child{text-align:left}
+.ptref tr.ptref-on td{background:rgba(80,160,255,.18);font-weight:700}
+.ptref tr.ptref-on td:first-child{box-shadow:inset 3px 0 0 rgba(80,160,255,.9)}
+.ptref-note{margin:8px 0 0;font-size:.78rem;opacity:.85}
+</style>
 
 <!-- installable web app --><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b1428"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="icon" type="image/png" sizes="512x512" href="icon-512.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Strat Cmd"><script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(e){console.warn("SW registration failed",e)})})}</script>
 </head><body>
@@ -352,6 +365,17 @@ details summary{cursor:pointer;font-weight:600}
           <label class="f">Max loss per trade (% of drawdown)<input id="ddPct" type="number" min="0.1" step="0.5" inputmode="decimal" value="6.67"></label>
         </div>
         <p class="msn" id="msInfo" aria-live="polite"></p>
+<details class="ptref" id="ptRef" open>
+  <summary>📏 Point reference</summary>
+  <div class="ptref-body">
+    <p class="ptref-note" style="margin:0 0 6px">Your max risk per trade: <b id="ptRefRisk">$100</b></p>
+    <div class="ptref-wrap"><table>
+      <thead><tr><th>Contract</th><th>$ per point</th><th>Tick size</th><th>$ per tick</th><th>Points for your max risk (1 contract)</th><th>(2 contracts)</th></tr></thead>
+      <tbody id="ptRefBody"></tbody>
+    </table></div>
+    <p class="ptref-note">Max stop in points = max $ risk ÷ ($ per point × contracts)</p>
+  </div>
+</details>
       </section>
 
       <section class="card">
@@ -526,7 +550,7 @@ const TFS=["M","W","D","60"];
 const TFNAMES={M:"Monthly",W:"Weekly",D:"Daily","60":"1 Hour"};
 
 /* ---------- storage (per-viewer convenience only) ---------- */
-function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
+function load(k,d){try{const r=localStorage.getItem(k);if(!r)return d;const v=JSON.parse(r);if(Array.isArray(d))return Array.isArray(v)?v.filter(x=>x&&typeof x==="object"):d;if(d&&typeof d==="object")return v&&typeof v==="object"&&!Array.isArray(v)?v:d;return v==null?d:v}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 
 /* ---------- state ---------- */
@@ -544,6 +568,7 @@ if(!load("sc-mig-r100",false)){const o=load("sc-settings",null);if(o&&+o.risk===
 /* one-time migration: drawdown % 5 -> 6.67 (6.67% of $1,500 = about $100) */
 if(!load("sc-mig-pct667",false)){const v=load("sc-dd-pct",null);if(v!=null&&v!==""&&+v===5)save("sc-dd-pct",6.67);save("sc-mig-pct667",true)}
 const settings=Object.assign({inst:"MES",tf:"1h",risk:100,maxc:3,minrr:2,stopMode:"full",auto:true},load("sc-settings",{}));
+["risk","maxc","minrr"].forEach(k=>{const n=parseFloat(settings[k]);settings[k]=n>0?n:({risk:100,maxc:3,minrr:2})[k]});
 
 /* ---------- helpers ---------- */
 const inst=()=>INST[settings.inst]||INST.MES;
@@ -1477,5 +1502,24 @@ PUX.init({ta:"importText",anchor:"importMsg",show:function(){},
  result:function(){var m=document.getElementById("importMsg");return /err/.test(m.className)?m:document.getElementById("ticketCard")},
  prompt:function(){var s="MES",tf="the chart's timeframe",tk="its tick size";try{s=settings.inst;tf=settings.tf;if(INST[s]&&INST[s].tick)tk=String(INST[s].tick)}catch(e){}
   return TPL.split("{{SYM}}").join(s).split("{{TF}}").join(tf).split("{{TICK}}").join(tk)}});})();
+</script>
+<script id="ptRefJs">
+/* Point reference card: display only. Reads the max-risk box and contract picker; never writes to app state. */
+(function(){try{
+  var ROWS=[["NQ",20,0.25],["MNQ",2,0.25],["ES",50,0.25],["MES",5,0.25],["GC",100,0.10],["MGC",10,0.10]];
+  var getRisk=function(){var e=document.getElementById('risk');return e?parseFloat(e.value):NaN}, getSym=function(){var e=document.getElementById('inst');return e?e.value:''}, KEY="sc-ptref-open";
+  var body=document.getElementById("ptRefBody"),det=document.getElementById("ptRef"),lbl=document.getElementById("ptRefRisk");if(!body||!det)return;
+  function f(n,d){return Number(n).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:d==null?2:d})}
+  function usd(n){return "$"+f(n)}
+  var last="";
+  function render(){var r=NaN,s="";try{r=getRisk()}catch(e){}try{s=String(getSym()||"").toUpperCase()}catch(e){}
+    var ok=isFinite(r)&&r>0,k=(ok?r:"x")+"|"+s;if(k===last)return;last=k;
+    if(lbl)lbl.textContent=ok?usd(r):"—";
+    body.innerHTML=ROWS.map(function(w){var on=w[0]===s;return '<tr'+(on?' class="ptref-on" aria-current="true"':'')+'><td>'+w[0]+(on?' ◀':'')+'</td><td>'+usd(w[1])+'</td><td>'+w[2].toFixed(2)+'</td><td>'+(function(t){return t%1?"$"+t.toFixed(2):usd(t)})(Math.round(w[1]*w[2]*100)/100)+'</td><td>'+(ok?f(r/w[1]):"—")+'</td><td>'+(ok?f(r/(w[1]*2)):"—")+'</td></tr>'}).join("")}
+  try{var st=localStorage.getItem(KEY);if(st==="0")det.open=false}catch(e){}
+  det.addEventListener("toggle",function(){try{localStorage.setItem(KEY,det.open?"1":"0")}catch(e){}});
+  document.addEventListener("input",render,true);document.addEventListener("change",render,true);
+  render();setInterval(render,700);
+}catch(e){}})();
 </script>
 </body></html>

@@ -1,4 +1,17 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><style id="ptRefCss">
+.ptref{margin-top:12px;border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:0;font-size:.85rem}
+.ptref>summary{cursor:pointer;padding:9px 12px;font-weight:600;list-style:revert;user-select:none}
+.ptref-body{padding:0 12px 10px}
+.ptref-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ptref table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:300px}
+.ptref th,.ptref td{padding:5px 4px;font-size:.8rem;border-bottom:1px solid rgba(128,128,128,.25);text-align:right;white-space:nowrap}
+.ptref th{font-size:.7rem;font-weight:600;opacity:.8;white-space:normal;vertical-align:bottom;text-transform:none;letter-spacing:0;line-height:1.25}
+.ptref th:first-child,.ptref td:first-child{text-align:left}
+.ptref tr.ptref-on td{background:rgba(80,160,255,.18);font-weight:700}
+.ptref tr.ptref-on td:first-child{box-shadow:inset 3px 0 0 rgba(80,160,255,.9)}
+.ptref-note{margin:8px 0 0;font-size:.78rem;opacity:.85}
+</style>
+
 <!-- installable web app --><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b1428"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="icon" type="image/png" sizes="512x512" href="icon-512.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Risk Check"><script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(e){console.warn("SW registration failed",e)})})}</script>
 </head><body>
 <title>Trade Risk Check</title>
@@ -242,6 +255,17 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
         <div class="field"><label for="minRR">Min reward : risk</label><input id="minRR" type="number" min="0" step="0.1" inputmode="decimal" value="2"></div>
         <div class="field full"><label for="fees">Fees per contract, round trip <span class="hint">($, optional)</span></label><input id="fees" type="number" min="0" step="any" inputmode="decimal" value="0"></div>
       </div>
+<details class="ptref" id="ptRef" open>
+  <summary>📏 Point reference</summary>
+  <div class="ptref-body">
+    <p class="ptref-note" style="margin:0 0 6px">Your max risk per trade: <b id="ptRefRisk">$100</b></p>
+    <div class="ptref-wrap"><table>
+      <thead><tr><th>Contract</th><th>$ per point</th><th>Tick size</th><th>$ per tick</th><th>Points for your max risk (1 contract)</th><th>(2 contracts)</th></tr></thead>
+      <tbody id="ptRefBody"></tbody>
+    </table></div>
+    <p class="ptref-note">Max stop in points = max $ risk ÷ ($ per point × contracts)</p>
+  </div>
+</details>
     </form>
 
     <div class="results">
@@ -939,5 +963,24 @@ PUX.init({ta:"aiText",anchor:"pasteMsg",show:function(){},
  result:function(){var f=document.getElementById("fromAi");return f&&!f.hidden?f:document.getElementById("pasteMsg")},
  prompt:function(){var el=document.getElementById("inst"),s=el&&el.value&&el.value!=="CUSTOM"?el.value:"the chart's symbol";var tk=TK[s]!=null?String(TK[s]):"its tick size";
   return TPL.split("{{SYM}}").join(s).split("{{TF}}").join("read it from the chart header").split("{{TICK}}").join(tk)}});})();
+</script>
+<script id="ptRefJs">
+/* Point reference card: display only. Reads the max-risk box and contract picker; never writes to app state. */
+(function(){try{
+  var ROWS=[["NQ",20,0.25],["MNQ",2,0.25],["ES",50,0.25],["MES",5,0.25],["GC",100,0.10],["MGC",10,0.10]];
+  var getRisk=function(){var e=document.getElementById('maxRisk');return e?parseFloat(e.value):NaN}, getSym=function(){var e=document.getElementById('inst');return e?e.value:''}, KEY="trc-ptref-open";
+  var body=document.getElementById("ptRefBody"),det=document.getElementById("ptRef"),lbl=document.getElementById("ptRefRisk");if(!body||!det)return;
+  function f(n,d){return Number(n).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:d==null?2:d})}
+  function usd(n){return "$"+f(n)}
+  var last="";
+  function render(){var r=NaN,s="";try{r=getRisk()}catch(e){}try{s=String(getSym()||"").toUpperCase()}catch(e){}
+    var ok=isFinite(r)&&r>0,k=(ok?r:"x")+"|"+s;if(k===last)return;last=k;
+    if(lbl)lbl.textContent=ok?usd(r):"—";
+    body.innerHTML=ROWS.map(function(w){var on=w[0]===s;return '<tr'+(on?' class="ptref-on" aria-current="true"':'')+'><td>'+w[0]+(on?' ◀':'')+'</td><td>'+usd(w[1])+'</td><td>'+w[2].toFixed(2)+'</td><td>'+(function(t){return t%1?"$"+t.toFixed(2):usd(t)})(Math.round(w[1]*w[2]*100)/100)+'</td><td>'+(ok?f(r/w[1]):"—")+'</td><td>'+(ok?f(r/(w[1]*2)):"—")+'</td></tr>'}).join("")}
+  try{var st=localStorage.getItem(KEY);if(st==="0")det.open=false}catch(e){}
+  det.addEventListener("toggle",function(){try{localStorage.setItem(KEY,det.open?"1":"0")}catch(e){}});
+  document.addEventListener("input",render,true);document.addEventListener("change",render,true);
+  render();setInterval(render,700);
+}catch(e){}})();
 </script>
 </body></html>
