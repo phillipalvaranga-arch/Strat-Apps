@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><style id="ptRefCss">
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}#checks li.rhd{display:block;font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;opacity:.75;margin-top:6px;padding-top:8px;border-top:1px solid rgba(128,128,128,.3)}
+</style><style id="ptRefCss">
 .ptref{margin-top:12px;border:1px solid rgba(128,128,128,.35);border-radius:10px;padding:0;font-size:.85rem}
 .ptref>summary{cursor:pointer;padding:9px 12px;font-weight:600;list-style:revert;user-select:none}
 .ptref-body{padding:0 12px 10px}
@@ -350,6 +351,217 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   </div>
 </div>
 
+<script id="strat-rules">
+/* STRAT-RULES shared v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
+   Established Strat practice turned into pass / warn / fail checks. Uses only data the app already has
+   (Claude's pasted read, the user's own levels and settings). Never creates entries, stops or targets. */
+(function(g){
+  var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)?n:null};
+  var fmt=function(v){return v==null?"–":(+v).toLocaleString("en-US",{maximumFractionDigits:2})};
+  /* read the parts of a Claude answer the rules need: JSON block first, then the plain-text headings */
+  function readClaude(text){
+    var t=String(text==null?"":text).replace(/\r/g,"").replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'");
+    var c={};if(!t.trim())return c;
+    var at=t.indexOf('"entry_price"');if(at<0)at=t.indexOf('"verdict"');
+    if(at>=0){for(var st=t.lastIndexOf("{",at),k=0;st>=0&&k<25;st=t.lastIndexOf("{",st-1),k++){var d=0,done=false;
+      for(var i=st;i<t.length;i++){var ch=t[i];if(ch==="{")d++;else if(ch==="}"){d--;if(!d){try{var o=JSON.parse(t.slice(st,i+1));if(o&&typeof o==="object"&&("verdict" in o||"entry_price" in o)){c.json=o;done=true}}catch(e){}break}}}if(done)break}}
+    var j=c.json||{};
+    var v=String(j.verdict||"").toLowerCase();
+    var lines=t.split("\n").map(function(l){return l.replace(/[*_`>#]+/g,"").replace(/^\s*[-•]\s*/,"").trim()}).filter(Boolean);
+    var after=function(re){for(var i=0;i<lines.length;i++){var m=lines[i].match(re);if(m){var rest=lines[i].slice(m[0].length).replace(/^[\s:–—-]+/,"");if(!rest&&lines[i+1])rest=lines[i+1];return rest}}return null};
+    if(!v){var vl=after(/^(?:final\s+)?verdict\b(?:\s*\([^)]*\))?/i);if(vl){vl=vl.toLowerCase();v=/no[\s-]?trade|skip|stand aside|pass\b/.test(vl)?"no trade":/\bwait\b|not yet|not triggered/.test(vl)?"wait":/\btrade\b|\btake\b|\bgo\b|\benter\b/.test(vl)?"trade":""}}
+    if(v)c.verdict=/no/.test(v)?"no trade":/wait/.test(v)?"wait":/trade/.test(v)?"trade":null;
+    c.setup=j.setup!=null?String(j.setup):after(/^(?:setup|pattern)\b/i);
+    c.sequence=Array.isArray(j.sequence)?j.sequence.map(String):(function(){var s=after(/^(?:candle\s+labels?|strat\s+labels?|candles?|sequence)\b/i);return s?(s.match(/\b(?:1|2U|2D|3)\b/gi)||[]).map(function(x){return x.toUpperCase()}):null})();
+    c.orderType=j.order_type||null;c.entryText=j.entry!=null?String(j.entry):after(/^(?:entry|enter)\b/i);
+    c.stopText=j.stop!=null?String(j.stop):after(/^stop(?:\s*loss)?\b/i);c.target1Text=j.target1!=null?String(j.target1):after(/^(?:target\s*1|targets?|take\s*profit)\b/i);
+    c.lastPrice=NUM(j.last_price);c.side=j.side||null;
+    var ms=j.market_structure||{},ps=j.price_structure||{};
+    c.trend=ms.trend||(/broaden|megaphone/i.test(t)?"broadening":null);
+    c.location=ps.location||((t.match(/\b(at support|at resistance|mid-range|breaking out|breaking down)\b/i)||[])[1]||"").toLowerCase()||null;
+    c.condition=j.market_condition||null;
+    var lv=[];(Array.isArray(ps.levels)?ps.levels:[]).forEach(function(x){var p=NUM(x&&x.price);if(p!=null)lv.push({price:p,kind:/res/i.test(x.kind)?"resistance":"support",label:String(x.label||x.kind||""),strength:x.strength||""})});
+    if(!lv.length)lines.forEach(function(l){var kind=/resist|supply|\bpdh\b|\bpwh\b|prior (day|week) high/i.test(l)?"resistance":/support|demand|\bpdl\b|\bpwl\b|prior (day|week) low/i.test(l)?"support":null;if(!kind||/^(entry|stop|target)/i.test(l))return;
+      var lab=(l.match(/\(([^)]{2,30})\)/)||[])[1]||"";(l.replace(/\([^)]*\)/g," ").match(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{3,6}(?:\.\d{1,2})?\b/g)||[]).slice(0,4).forEach(function(p){lv.push({price:NUM(p),kind:kind,label:lab||kind,strength:/strong|major|key/i.test(l)?"strong":""})})});
+    c.levels=lv;
+    var ft=j.ftfc!=null?(typeof j.ftfc==="string"?j.ftfc:JSON.stringify(j.ftfc)):after(/^(?:full\s+)?time\s*frame\s+continuity\b|^ftfc\b|^higher\s+time\s*frames?\b/i);
+    if(ft){var gN=0,rN=0,re=/\b(monthly|weekly|daily|4\s?h|h4|1\s?h|h1|60|hourly|quarterly|month|week|day|M|W|D)\b["']?\s*[:=(\-–]?\s*["']?(green|red|bullish|bearish|up|down)\b/gi,m2;while((m2=re.exec(ft))){if(/green|bull|up/i.test(m2[2]))gN++;else rN++}
+      if(!gN&&!rN){if(/(all|full)[^.]{0,30}(green|bullish|up)/i.test(ft))gN=3;else if(/(all|full)[^.]{0,30}(red|bearish|down)/i.test(ft))rN=3}
+      c.ftfc={g:gN,r:rN,known:gN+rN,text:ft}}
+    return c;
+  }
+  var SIG=/\b(?:[123x]-1-2|2u?d?-2u?d?|1-2-2|3-2-2|2-2|rev\s*strat|inside\s*bar|hammer|shooter|shooting\s*star|1-3|3-1|1-1)\b/i;
+  /* ctx: {dir, entry, stop, targets[], pv, tick, qty, maxRisk, maxStopPts, minRR, ftfc:{g,r,known}, trigger:{h,l}, claude:readClaude(), chop, setupBarType, lastPrice, hide:[]} */
+  function rules(ctx){
+    var c=ctx.claude||{},items=[],add=function(id,k,t){items.push({id:id,c:k,t:t,hide:(ctx.hide||[]).indexOf(id)>=0})};
+    var e=NUM(ctx.entry),s=NUM(ctx.stop),tg=(ctx.targets||[]).map(NUM).filter(function(x){return x!=null});
+    var dir=ctx.dir||(e!=null&&s!=null?(s<e?"long":"short"):null),sg=dir==="short"?-1:1,long=dir!=="short";
+    var R=(e!=null&&s!=null)?Math.abs(e-s):null,tick=NUM(ctx.tick)||0.25,minRR=NUM(ctx.minRR)||2,maxPts=NUM(ctx.maxStopPts)||25,maxRisk=NUM(ctx.maxRisk)||200;
+    // 1. Claude's call
+    if(c.verdict==="no trade")add("call","bad","Claude says NO TRADE. Don't take it.");
+    else if(c.verdict==="wait")add("call","bad","Claude says WAIT: not a trade until the trigger breaks and the read says trade.");
+    else if(c.verdict==="trade")add("call","ok","Claude's call is trade.");
+    // 2. complete plan
+    var miss=[];if(e==null)miss.push("entry");if(s==null)miss.push("stop");if(!tg.length)miss.push("target");
+    if(miss.length)add("plan","bad","Missing "+miss.join(", ")+": never trade without a defined entry, stop, target and size.");
+    // 3. continuity
+    var f=ctx.ftfc&&ctx.ftfc.known?ctx.ftfc:(c.ftfc&&c.ftfc.known?c.ftfc:null);
+    if(dir&&f){var agree=long?f.g:f.r,against=long?f.r:f.g;
+      if(against&&!agree)add("ftfc","bad","Against timeframe continuity: "+against+" of "+f.known+" higher timeframes are "+(long?"red":"green")+".");
+      else if(against)add("ftfc","meh","Continuity is mixed ("+f.g+" green / "+f.r+" red). Size down or wait for full continuity.");
+      else add("ftfc","ok","Full timeframe continuity agrees ("+agree+" of "+f.known+" "+(long?"green":"red")+").")}
+    else if(dir)add("ftfc","meh","Timeframe continuity not confirmed. Check the higher timeframes first.");
+    // 4. actionable signal
+    var setup=String(c.setup||ctx.setup||"").trim(),seq=c.sequence||ctx.sequence||[],lastT=seq.length?String(seq[seq.length-1]).toUpperCase():null;
+    if(setup&&SIG.test(setup))add("signal","ok","Actionable Strat signal: "+setup.replace(/\.$/,"").slice(0,60)+".");
+    else if(setup&&/^(none|no setup|n\/a|-|—)/i.test(setup))add("signal","bad","No actionable Strat signal. No setup, no trade.");
+    else if(lastT==="1")add("signal","ok","Inside bar (1) ready to trigger.");
+    else if(setup)add("signal","meh","Setup \""+setup.slice(0,40)+"\" isn't a standard Strat signal (2-1-2, 3-1-2, 2-2, 1-2-2, 3-2-2).");
+    // 5. at a level / location
+    var lv=c.levels||[],loc=String(c.location||"");
+    if(dir&&R){var own=lv.filter(function(x){return x.kind===(long?"support":"resistance")&&(long?(x.price>=s-R&&x.price<=e+0.5*R):(x.price<=s+R&&x.price>=e-0.5*R))});
+      if((long&&/at support|breaking out/.test(loc))||(!long&&/at resistance|breaking down/.test(loc))||own.length)add("level","ok","Setup sits at a level"+(own.length?" ("+own[0].label.slice(0,24)+" "+fmt(own[0].price)+")":" ("+loc+")")+".");
+      else if(/mid-range/.test(loc))add("level","meh","Price is mid-range. Strat signals work best at a level, not in the middle.");
+      else if(lv.length)add("level","bad","No key level behind the setup. No level, no trade.");
+      else add("level","meh","No key levels in the read. Confirm the setup is at a level.")}
+    // 6. trigger actually broken / not anticipating
+    var T=ctx.trigger;if(dir&&e!=null&&T&&NUM(T.h)!=null&&NUM(T.l)!=null){var th=NUM(T.h),tl=NUM(T.l);
+      if(long?e>=th-1e-9:e<=tl+1e-9)add("trigger","ok","Entry is a break of the trigger bar "+(long?"high ("+fmt(th)+")":"low ("+fmt(tl)+")")+".");
+      else add("trigger","bad","Entry "+fmt(e)+" is inside the trigger bar ("+fmt(tl)+"–"+fmt(th)+"). That's anticipating. Wait for the break.")}
+    else if(dir&&(c.orderType||c.entryText)){var ot=String(c.orderType||"")+" "+String(c.entryText||"");
+      if(/limit/i.test(ot))add("trigger","meh","Limit entry anticipates the move. Strat entries are stop orders through the trigger bar.");
+      else if(/market|now|current price/i.test(ot)&&!/stop/i.test(ot))add("trigger","meh","Market entry: make sure the trigger bar has actually broken.");
+      else if(/stop|break|above|below|1 tick/i.test(ot))add("trigger","ok","Entry is a stop order through the trigger bar (no anticipating).")}
+    var lp=NUM(ctx.lastPrice!=null?ctx.lastPrice:c.lastPrice);
+    if(dir&&R&&lp!=null&&e!=null){var run=sg*(lp-e)/R;
+      if(tg.length&&sg*(lp-tg[0])>=0)add("late","bad","Price ("+fmt(lp)+") is already at Target 1. Too late to enter.");
+      else if(run>0.5)add("late","meh","Price already ran "+run.toFixed(1)+"R past the entry. Don't chase.")}
+    // 7. magnitude
+    if(dir&&R&&tg.length){var t1=tg[0],rr=sg*(t1-e)/R;
+      if(rr>=minRR-1e-9)add("rr","ok","Room to Target 1 is "+rr.toFixed(1)+"R (needs "+minRR+"R).");
+      else add("rr","bad","Target 1 is only "+rr.toFixed(1)+"R away. Strat magnitude needs at least "+minRR+"R.");
+      var opp=lv.filter(function(x){return x.kind===(long?"resistance":"support")});
+      var near=opp.filter(function(x){return Math.abs(x.price-t1)<=Math.max(4*tick,0.15*R)});
+      if(near.length||/swing|prior|previous|high|low|pdh|pdl|pwh|pwl|level|resist|support|gap/i.test(String(c.target1Text||"")))add("target","ok","Target 1 is at a real prior high/low or level.");
+      else if(opp.length||c.target1Text)add("target","meh","Target 1 isn't at a marked prior high/low. Check the chart for the real magnitude level.");
+      // 8. resistance before the target (PDH/PDL/PWH/PWL)
+      var block=opp.filter(function(x){return sg*(x.price-e)>tick/2&&sg*(t1-x.price)>Math.max(4*tick,0.15*R)}).sort(function(a,b){return sg*(a.price-b.price)});
+      if(block.length){var b0=block[0],key=/pdh|pdl|pwh|pwl|prior\s*(day|week)|previous\s*(day|week)|day\s*(high|low)|week(ly)?\s*(high|low)/i.test(b0.label)||/strong/i.test(b0.strength)||sg*(b0.price-e)<=0.5*R;
+        add("block",key?"bad":"meh",(b0.label||b0.kind).slice(0,28)+" at "+fmt(b0.price)+" sits before Target 1. You'd be "+(long?"buying into resistance":"selling into support")+".")}}
+    // 9. stop: other side of the trigger bar, size in points and dollars
+    if(dir&&R){
+      if(T&&NUM(T.h)!=null&&NUM(T.l)!=null){var H=NUM(T.h),L=NUM(T.l),mid=(H+L)/2;
+        if(long?s<=L+1e-9:s>=H-1e-9)add("stopside","ok","Stop is on the other side of the trigger bar.");
+        else if(long?s<=mid+1e-9:s>=mid-1e-9)add("stopside","meh","Stop is inside the trigger bar (half-bar stop): tighter, easier to get stopped out.");
+        else add("stopside","bad","Stop is too close: past the middle of the trigger bar. Normal noise will stop you out.")}
+      else if(c.stopText&&/other side|below the|above the|beyond|under the|over the/i.test(c.stopText)&&/bar|candle|low|high/i.test(c.stopText))add("stopside","ok","Stop is on the other side of the trigger bar.");
+      if(R>maxPts+1e-9)add("stoppts","bad","Stop is "+fmt(R)+" pts: over your "+fmt(maxPts)+"-pt max.");
+      else add("stoppts","ok","Stop is "+fmt(R)+" pts (max "+fmt(maxPts)+").");
+      var pv=NUM(ctx.pv),q=Math.max(1,Math.floor(NUM(ctx.qty)||1));
+      if(pv){var risk=R*pv*q;if(risk>maxRisk+1e-9)add("risk","bad",q+" contract"+(q>1?"s":"")+" risk $"+risk.toFixed(0)+": over your $"+maxRisk+" limit.");else add("risk","ok","Risk $"+risk.toFixed(0)+" is within your $"+maxRisk+" limit.")}}
+    // 10. chop: outside bar / broadening / choppy
+    var three=lastT==="3"||ctx.setupBarType==="3",broad=/broaden/i.test(String(c.trend||"")),chop=ctx.chop||/chop/i.test(String(c.condition||""));
+    if(three)add("chop","meh","Trigger bar is a 3 (outside bar): wide range and chop risk. Wait for a cleaner bar.");
+    if(broad)add("chop2","meh","Broadening (megaphone) structure: chop, lower odds.");
+    if(chop&&!three)add("chop3","meh","Choppy tape. Strat signals fail more often in chop.");
+    var fails=items.filter(function(x){return x.c==="bad"}),warns=items.filter(function(x){return x.c==="meh"});
+    var verdict=fails.length?{c:"bad",t:"NO TRADE — SETUP DOES NOT MEET THE RULES.",why:fails[0].t}:warns.length?{c:"meh",t:"CAUTION — "+warns.length+" rule"+(warns.length>1?"s":"")+" to check before you enter.",why:warns[0].t}:items.length?{c:"ok",t:"All Strat rules pass.",why:""}:{c:"meh",t:"Not enough data for the Strat rules yet.",why:""};
+    return {items:items,fails:fails.length,warns:warns.length,verdict:verdict};
+  }
+  g.stratReadClaude=readClaude;g.stratRules=rules;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="strat-tf">
+/* STRAT-TF shared extractor v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check) */
+(function(g){
+  var SYM="MNQ|MES|MYM|M2K|MGC|MCL|MHG|MNG|MBT|MET|M6E|M6B|SIL|NQ|ES|YM|RTY|GC|SI|HG|CL|NG|QO|QI|QM|QG|6E|6B|SPY|QQQ|nasdaq|s&p|gold|crude|futures";
+  function canon(raw){
+    if(raw==null)return null;
+    var s=String(raw).toLowerCase().replace(/[*_`"'()\[\]]/g," ").replace(/\s+/g," ").trim();
+    s=s.replace(/\s*(chart|candles?|bars?|timeframe|tf|time frame)$/," ").trim();
+    var m,n;
+    if((m=s.match(/^(\d{1,3})\s*-?\s*(?:m|mins?|minutes?)$/))||(m=s.match(/^m\s?(\d{1,3})$/))||(m=s.match(/^(\d{1,3})$/))){n=+m[1];
+      return n===1?"1m":n===5?"5m":n===15?"15m":n===30?"30m":n===60?"1h":n===240?"4h":null}
+    if((m=s.match(/^(\d)\s*-?\s*(?:h|hrs?|hours?)$/))||(m=s.match(/^h\s?(\d)$/))){n=+m[1];return n===1?"1h":n===4?"4h":null}
+    if(/^(one|1)[ -]?hour$|^hourly$|^hour$/.test(s))return"1h";
+    if(/^(four|4)[ -]?hour$/.test(s))return"4h";
+    if(/^(daily|day|d|1d|1 day)$/.test(s))return"Daily";
+    if(/^(weekly|week|w|1w|1 week)$/.test(s))return"Weekly";
+    return null;
+  }
+  // explicit timeframe tokens (no bare numbers)
+  var TOK="(?:\\b(?:1|5|15|30|60|240)\\s*-?\\s*(?:m|mins?|minutes?)\\b|\\bm\\s?(?:1|5|15|30|60)\\b|\\b[14]\\s*-?\\s*(?:h|hrs?|hours?)\\b|\\bh[14]\\b|\\b(?:one|four)[ -]hour\\b|\\bhourly\\b|\\bdaily\\b|\\bweekly\\b)";
+  var COMPACT="(?:\\b(?:1|5|15|30|60|240)\\s?(?:m|min)\\b|\\bm(?:1|5|15|30|60)\\b|\\b[14]h\\b|\\bh[14]\\b)";
+  var COLOR="(?:green|red|bullish|bearish|up|down|unknown|not checked|unchecked|mixed|neutral|\\?)";
+  function first(str,re){var m=String(str||"").match(new RegExp(re,"i"));return m?canon(m[0]):null}
+  function stripCont(s){
+    var tf=TOK.replace(/^\(\?:/,"(?:");
+    return s.replace(new RegExp(tf+"\\s*(?:candle|bar|tf)?\\s*(?:[:=(\\-–—]|is|are|=)?\\s*"+COLOR+"\\b","gi")," ")
+            .replace(new RegExp("\\b(?:green|red|bullish|bearish)\\s+(?:on\\s+)?(?:the\\s+)?"+tf,"gi")," ")
+            .replace(new RegExp("\\bthe\\s+"+tf+"\\s+(?:candle\\s+)?(?:is|looks|stays|remains|closed|turned)\\s+(?:still\\s+)?"+COLOR+"\\b","gi")," ");
+  }
+  function pick(text){
+    var t=String(text==null?"":text).replace(/\r/g,"");
+    if(!t.trim())return null;
+    var m,v;
+    // 1) JSON keys from the app prompts
+    var keys=["chart_timeframe","entry_timeframe","setup_timeframe","timeframe","tf"];
+    for(var i=0;i<keys.length;i++){
+      var re=new RegExp('"'+keys[i]+'"\\s*:\\s*("([^"]*)"|(\\d{1,3}))',"i");
+      if((m=t.match(re))){v=canon(m[2]!=null?m[2]:m[3]);if(v)return v}
+    }
+    // plain lines without markdown
+    var lines=t.split("\n").map(function(l){return l.replace(/[*_`>]+/g,"").replace(/^\s*(?:#+|[-•–·]|\d+[.)])\s*/,"").replace(/\s+/g," ").trim()}).filter(Boolean);
+    var isCont=function(l){return /^(?:full\s+)?(?:timeframe\s+continuity|time\s*frame\s+continuity|continuity|higher\s+time\s*frames?|htfs?|ftfc|"ftfc"|"continuity")\b/i.test(l)};
+    // 2) labeled lines: "Symbol and timeframe you see: ...", "Timeframe: 5m", "Chart: 15-minute"
+    var LAB=/^(?:symbol\s*(?:and|&|\/|,)?\s*time\s*frames?(?:\s+you\s+see)?|time\s*frame\s+you\s+see|time\s*frame\s+of\s+the\s+(?:screenshot|chart)|(?:chart|entry|setup|execution|trading|trigger)\s+time\s*frame|time\s*frame|tf|chart|instrument\s*(?:and|&|\/)\s*time\s*frame|symbol\s*\/\s*tf)\b\s*(?:\([^)]*\))?\s*[:\-–—]?\s*(.*)$/i;
+    for(var k=0;k<lines.length;k++){
+      var l=lines[k];if(isCont(l))continue;
+      if((m=l.match(LAB))){
+        var val=m[1];
+        if(!val||!val.replace(/[\s:–—-]/g,"")){var nx=lines[k+1];if(nx&&!LAB.test(nx)&&!/^(market|price|bullish|bearish|good|bad|verdict|setup|entry|stop|targets?|candle)\b/i.test(nx))val=nx;else continue}
+        val=stripCont(val);
+        v=first(val,TOK);
+        if(!v){ // TradingView style "MNQ1! · 15 · CME" or "MNQ, 15"
+          var vv=val.replace(new RegExp("\\b(?:"+SYM+")[A-Z]?\\d{0,4}!?","gi")," ").replace(/\d[\d,]*\.\d+|\d{1,3}(?:,\d{3})+|\d{4,}/g," ");
+          var bm=vv.match(/(?:^|[\s,·|\/:–—-])(1|5|15|30|60|240|D|W)(?=$|[\s,·|\/)])/i);if(bm)v=canon(bm[1]);
+        }
+        if(v)return v;
+      }
+    }
+    // text with continuity lines removed and continuity phrases stripped
+    var body=stripCont(lines.filter(function(l){return !isCont(l)}).join("\n"));
+    // 3) symbol followed closely by a timeframe ("## MNQ – 15m", "MES hourly chart", "MNQ 15-Minute Chart")
+    if((m=body.match(new RegExp("(?:^|[^A-Za-z0-9])(?:"+SYM+")[A-Z]?\\d{0,4}!?[^\\n]{0,25}?("+TOK+")(?!\\s+(?:after|before|ago|into|of|from|later|until|left|past|in|to|or|and)\\b)","i")))&&(v=canon(m[1])))return v;
+    // 4) entry/setup chart cues ("on the 15m chart", "5m entry", "this 5-minute chart")
+    var CUE=[
+      "\\b(?:on|trade|trading|entry\\s+on|setup\\s+on|trigger\\s+on|using|looking\\s+at|this|your)\\s+(?:the\\s+|this\\s+|your\\s+)?("+TOK+")",
+      "("+TOK+")\\s+(?:entry|setup|trigger|execution|chart|candles?|bars?|time\\s*frame|tf)\\b",
+      "\\bthe\\s+("+TOK+")\\s+(?:is\\s+)?(?:forming|printing|printed|shows|showing|has|just)\\b"];
+    for(var c=0;c<CUE.length;c++){
+      var re2=new RegExp(CUE[c],"gi"),mm,daily=null;
+      while((mm=re2.exec(body))){v=canon(mm[1]);if(!v)continue;if(v==="Daily"||v==="Weekly"){if(!daily)daily=v;continue}return v}
+      if(daily)return daily;
+    }
+    // 5) last resort: compact token in the first 3 lines
+    v=first(lines.slice(0,3).filter(function(l){return !isCont(l)}).map(stripCont).join(" "),COMPACT);
+    return v||null;
+  }
+  g.stratPickTF=pick;g.stratCanonTF=canon;
+})(typeof window!=="undefined"?window:globalThis);
+/* set a Timeframe <select> from a pasted analysis; returns the value set, or null when nothing changed */
+(function(g){
+  g.stratApplyTF=function(sel,tf){
+    if(!sel||!tf)return null;
+    var o=[].slice.call(sel.options).find(function(x){return x.value&&x.value.toLowerCase()===String(tf).toLowerCase()});
+    if(!o||sel.value===o.value)return null;
+    sel.value=o.value;
+    try{sel.dispatchEvent(new Event("change",{bubbles:true}))}catch(e){}
+    try{sel.animate([{boxShadow:"0 0 0 4px #f5b301"},{boxShadow:"0 0 0 0 transparent"}],{duration:1600,easing:"ease-out"})}catch(e){}
+    return o.value;
+  };
+})(typeof window!=="undefined"?window:globalThis);
+</script>
 <script>
 (function(){
   const INST = [
@@ -437,8 +649,19 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   const msQty=()=>{ const q=Math.floor(parseFloat($('qty').value)); return q>=1?q:1; };
   function msUpdate(){ const I=inst(); msShow('msVerdict', msInfo($('entry').value,$('sl').value,I.pv,msQty())); $('msInfo').textContent=msLimitLine(I.pv,msQty(),I.id==='CUSTOM'?'this contract':I.id); }
   function render(){ try{ return render0(); } finally{ msUpdate(); } }
+  /* Strat rules: established Strat practice checked against the trade (never creates levels) */
+  let RULECTX=null,SRBASE=null;
+  function applyStratRules(){ if(!RULECTX||!SRBASE||!window.stratRules) return;
+    const V=$('verdict'),badge=$('badge'),vt=$('verdictText'),checks=$('checks'),E=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const txt=$('aiText')?$('aiText').value.trim():''; const SR=stratRules(Object.assign({},RULECTX,{claude:txt?stratReadClaude(txt):{}}));
+    const li=(c,t)=>{const k=c==='ok'?['ok','✓']:c==='bad'?['no','✕']:['wn','!'];return `<li><span class="ic ${k[0]}" aria-hidden="true">${k[1]}</span><span>${E(t)}</span></li>`};
+    checks.innerHTML=SRBASE.html+'<li class="rhd">Strat rules</li>'+li(SR.verdict.c,SR.verdict.t)+SR.items.filter(x=>!x.hide).map(x=>li(x.c,x.t)).join('');
+    V.className=SRBASE.cls; badge.textContent=SRBASE.b; vt.textContent=SRBASE.t;
+    if(SR.fails){ V.className='verdict bad'; badge.textContent='No trade'; vt.textContent='NO TRADE — SETUP DOES NOT MEET THE RULES. '+SR.verdict.why; }
+    else if(SR.warns && /\bgood\b/.test(SRBASE.cls)){ V.className='verdict warn'; badge.textContent='Caution'; vt.textContent=SRBASE.t+' Check '+SR.warns+' Strat rule'+(SR.warns>1?'s':'')+' below first.'; }
+  }
   function render0(){
-    LAST=null;
+    LAST=null; RULECTX=null; SRBASE=null;
     const I = inst();
     $('customWrap').hidden = sel.value!=='CUSTOM';
     const tickVal = I.pv*I.tick;
@@ -544,6 +767,11 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     else if(!riskOK && !rrOK) setVerdict('bad','Bad trade','The risk is too high and the profit is too small for the risk. See what to adjust.');
     else if(!riskOK) setVerdict('bad','Bad trade',`The reward is fine, but you would lose ${money(risk)}, which is more than your ${money(maxRisk)} limit.`);
     else setVerdict('bad','Bad trade',`The risk is within your limit, but the profit is too small for what you risk (1 : ${rr.toFixed(2)}).`);
+    { const ms=msInfo(entry,sl,I.pv,qty);
+      RULECTX={dir:side,entry,stop:sl,targets:[tp],pv:I.pv,tick:I.tick,qty,maxRisk:hasMax?maxRisk:200,minRR:hasRR?minRR:2,maxStopPts:ms&&ms.mode!=='dd'&&ms.maxPts>0?Math.floor(ms.maxPts/I.tick+1e-9)*I.tick:(parseFloat($('maxStop').value)||25),
+        ftfc:strat&&$('ftfc').checked?(side==='long'?{g:1,r:0,known:1}:{g:0,r:1,known:1}):null,
+        trigger:strat?{h:parseFloat($('trigHigh').value),l:parseFloat($('trigLow').value)}:null,setup:strat?$('pattern').selectedOptions[0].textContent:'',hide:strat?['risk','rr','ftfc']:['risk','rr']};
+      SRBASE={cls:V.className,b:badge.textContent,t:vt.textContent,html:checks.innerHTML}; applyStratRules(); }
 
     // adjustments
     const fixes=[];
@@ -715,8 +943,9 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   function preCheck(){
     const box=$('pre'), list=$('preList'), t=$('aiText').value.trim();
     if(!t){ window.PUX&&PUX.clear(); box.hidden=true; PRE=null; lastApplied=null; lastText=''; planPick=null; $('fromAi').hidden=true; $('pasteMsg').hidden=true; return; }
-    if(t!==lastText){ lastText=t; planPick=null; }
-    const ntx=!!(window.PUX&&PUX.nonTrade(t)); const a=ntx?{dir:null,lean:null,entry:null,stop:null,tp:null,bull:0,bear:0,plans:[],idx:0,sym:null,tf:null}:parseAnalysis(t); PRE=a; box.hidden=false;
+    const tfx=window.stratPickTF?stratPickTF(t):null;  /* shared TF extractor */
+    if(t!==lastText){ lastText=t; planPick=null; if(tfx && $('tf')) stratApplyTF($('tf'),tfx); }  /* set the Timeframe whenever new text arrives, even with no prices */
+    const ntx=!!(window.PUX&&PUX.nonTrade(t)); const a=ntx?{dir:null,lean:null,entry:null,stop:null,tp:null,bull:0,bear:0,plans:[],idx:0,sym:null,tf:null}:parseAnalysis(t); a.tf=tfx; PRE=a; box.hidden=false;
     window.PUX&&PUX.report(t,ntx?null:{entry:a.entry!=null,stop:a.stop!=null,target:a.tp!=null});
     // chooser when the text holds more than one plan
     (function(){
@@ -825,7 +1054,12 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   $('aiText').addEventListener('input',()=>{ const v=$('aiText').value, jump=v.length-txtLen; txtLen=v.length; clearTimeout(preT);
     preT=setTimeout(()=>{ if(jump>=30 && Date.now()-pasteAt>800) afterText(); else preCheck(); },250); });
   $('aiText').addEventListener('paste',()=>{ pasteAt=Date.now(); setTimeout(afterText,60); });
+  /* text pasted outside a text box: treat it as the analysis */
+  document.addEventListener('paste',e=>{ if(e.target&&e.target.closest&&e.target.closest('input,textarea,select,[contenteditable]')) return;
+    const tx=(e.clipboardData&&e.clipboardData.getData('text/plain')||'').trim();
+    if(tx.length>=40&&(/entry|stop|target|setup|verdict|strat/i.test(tx)||(window.stratPickTF&&stratPickTF(tx)))){ e.preventDefault(); $('aiText').value=tx; txtLen=tx.length; pasteAt=Date.now(); setTimeout(afterText,60); } });
   const _render=render; render=function(){ _render(); if($('aiText').value.trim()) preCheck(); };
+  { const _pre=preCheck; preCheck=function(){ _pre(); applyStratRules(); }; }  /* re-check the Strat rules whenever the pasted analysis changes */
 
   // ---- Claude analysis ----
   (function(){
