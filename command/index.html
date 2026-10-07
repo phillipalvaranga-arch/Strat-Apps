@@ -1401,10 +1401,24 @@ function parseProse(text){
   const syms=["MGC","MES","MNQ","MYM","M2K","MCL","SIL","MHG","MNG","M6E","MBT","MET","ES","NQ","YM","RTY","GC","SI","HG","PL","CL","NG","6E","6B","ZN","ZB"];
   for(const k of syms){if(new RegExp("(^|[^A-Za-z0-9])"+k+"(1!|[^A-Za-z0-9]|$)").test(clean)){out.inst=k;break}}
   if(!out.inst&&/micro gold/i.test(clean))out.inst="MGC";
-  const head=lines.slice(0,3).join(" ");
-  const TFM=/\b(1|5|15|30)[\s-]?(?:mins?|minutes?)\b/i,TFH=/\b(1|4)[\s-]?(?:hours?|hrs?)\b/i,TFC=/\b(1|5|15|30)[\s-]?(?:m|mins?|minutes?)\s+(?:chart|candles?|bars?|timeframe|tf)\b/i;
-  const tf=head.match(/\b(1|4)\s*hour\b/i)||head.match(TFM)||head.match(/\b(1m|5m|15m|30m|1h|4h)\b/i)||head.match(TFH)||clean.match(TFC)||clean.match(/\b(1|4)\s*hour\b/i)||clean.match(/·\s*(1m|5m|15m|30m|1h|4h)\b/i);
-  if(tf){const g=tf[1];out.tf=/^\d+[mh]$/i.test(g)?g.toLowerCase():/^[\s-]*h/i.test(tf[0].slice(String(g).length))?g+"h":g+"m"}
+  /* timeframe: prefer Claude's chart/entry TF; never invent; if several named, prefer entry/setup over continuity */
+  const normTF=raw=>{if(raw==null)return null;const s=String(raw).trim();let m=s.match(/^(15|30|5|1)\s*[- ]?(?:m|mins?|minutes?)$/i);if(m)return m[1]+"m";
+    m=s.match(/^(4|1)\s*[- ]?(?:h|hrs?|hours?)$/i);if(m)return m[1]+"h";if(/^(1m|5m|15m|30m|1h|4h)$/i.test(s))return s.toLowerCase();
+    if(/^daily$/i.test(s))return"Daily";if(/^weekly$/i.test(s))return"Weekly";return null};
+  const TF_TOKEN=/\b((?:15|30|5|1)\s*[- ]?(?:m|mins?|minutes?)|(?:4|1)\s*[- ]?(?:h|hrs?|hours?)|15m|30m|5m|1m|4h|1h|daily|weekly)\b/i;
+  const pickTF=str=>{const m=String(str||"").match(TF_TOKEN);return m?normTF(m[1]):null};
+  // 1) labeled "Symbol and timeframe" / "timeframe you see"
+  {const lab=lines.find(l=>/^[\W]*(symbol\s*(and\s*)?timeframe|timeframe\s*you\s*see)\b/i.test(l));if(lab)out.tf=pickTF(lab)}
+  // 2) entry/setup chart cues: "on the 15m chart", "trade the 5m", "15m entry"
+  if(!out.tf){const pats=[/\b(?:on|trade(?:ing)?(?:\s+the)?|entry\s+on|setup\s+on)\s+(?:the\s+)?((?:15|30|5|1)\s*[- ]?(?:m|mins?|minutes?)|(?:4|1)\s*[- ]?(?:h|hrs?|hours?)|15m|30m|5m|1m|4h|1h)\b/i,
+    /\b((?:15|30|5|1)\s*[- ]?(?:m|mins?|minutes?)|(?:4|1)\s*[- ]?(?:h|hrs?|hours?)|15m|30m|5m|1m|4h|1h)\s+(?:chart|candles?|bars?|timeframe|tf|entry|setup)\b/i];
+    for(const re of pats){const m=clean.match(re);if(m){out.tf=normTF(m[1]);break}}}
+  // 3) symbol + TF near each other (avoid continuity-only "Daily green / 1h green")
+  if(!out.tf){const stripped=clean.replace(/\b(?:monthly|weekly|daily|1h|4h|15m|30m|5m|1m)\s+(?:green|red|bullish|bearish)\b/gi," ").replace(/\b(?:green|red|bullish|bearish)\s+(?:monthly|weekly|daily|1h|4h|15m|30m|5m|1m)\b/gi," ");
+    const near=stripped.match(new RegExp("(?:MGC|MES|MNQ|MYM|M2K|MCL|SIL|MHG|MNG|M6E|MBT|MET|ES|NQ|YM|RTY|GC|SI|HG|PL|CL|NG|6E|6B|futures|gold|nasdaq|s&p)[^\\n]{0,40}?"+TF_TOKEN.source,"i"));
+    if(near)out.tf=normTF(near[1]||near[2]||near[3])}
+  // 4) last resort: first TF token in the opening lines (still no invent)
+  if(!out.tf){const head=lines.slice(0,4).join(" ").replace(/\b(?:monthly|weekly|daily|1h|4h|15m|30m|5m|1m)\s+(?:green|red|bullish|bearish)\b/gi," ");out.tf=pickTF(head)}
   // pattern, bias, condition
   const pick=re=>{const l=lines.find(x=>re.test(x));return l?l.replace(re,"").replace(/^[\s:–-]+/,"").trim():null};
   const pat=pick(/^[\W]*(setup|pattern)\s*:/i);if(pat)out.pattern=pat.replace(/\.$/,"").slice(0,80);
@@ -1482,7 +1496,8 @@ function importRead(text){
   if(out.stop==null&&out.bars.length<3){const m="Found the entry ("+out.entry+") but no stop loss price, so nothing was imported. Make sure Claude's reply has a line like Stop: 6498.75.";status(m,true);importMsg(m,true);return}
   if(autoClearOn()){clearPlanLevels(true);resetUserFTFC()}
   if(out.inst){const k=String(out.inst).toUpperCase().replace(/1!$/,"");if(INST[k])settings.inst=k}
-  if(out.tf){const o=[...$("tf").options].find(x=>x.value.toLowerCase()===String(out.tf).toLowerCase());if(o)settings.tf=o.value}
+  if(out.tf){const raw=String(out.tf).trim();let canon=raw;const mm=raw.match(/^(15|30|5|1)\s*[- ]?(?:m|mins?|minutes?)$/i);if(mm)canon=mm[1]+"m";else{const hh=raw.match(/^(4|1)\s*[- ]?(?:h|hrs?|hours?)$/i);if(hh)canon=hh[1]+"h";else if(/^daily$/i.test(raw))canon="Daily";else if(/^weekly$/i.test(raw))canon="Weekly";else if(/^(1m|5m|15m|30m|1h|4h)$/i.test(raw))canon=raw.toLowerCase()}
+    const o=[...$("tf").options].find(x=>x.value.toLowerCase()===String(canon).toLowerCase());if(o)settings.tf=o.value}
   syncSettingsUI();save("sc-settings",settings);
   if(out.ftfc&&typeof out.ftfc==="object"){
     const kmap=k=>{k=String(k).toLowerCase().replace(/[\s-]/g,"");if(k==="m"||k.startsWith("month"))return "M";if(k==="w"||k.startsWith("week"))return "W";if(k==="d"||k.startsWith("dail")||k==="day")return "D";if(k==="60"||k==="h"||k==="1h"||k==="60m"||k==="60min"||k.startsWith("hour")||k==="1hour")return "60";return null};

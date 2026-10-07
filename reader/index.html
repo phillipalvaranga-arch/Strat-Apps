@@ -1331,7 +1331,9 @@ Use null only for a price you truly cannot read from the axis.`}`;
       risks:lines(sec.risks),ftfc:lines(sec.ftfc).join(" ")};
     if(q){r.trade_quality=/\bbad\b/.test(q.slice(0,40))?"bad":/\bgood\b/.test(q.slice(0,40))?"good":undefined;r.quality_reason=lines(sec.quality).join(" ").replace(/^(good|bad)\s+(trade|setup)[.:,\s-]*/i,"")}
     if(sec.symtf){const u=sec.symtf.toUpperCase(),sym=SYMS.slice().sort((a,b)=>b.length-a.length).find(k=>new RegExp("\\b"+k+"(?![A-Z])").test(u));if(sym)r.chart_symbol=sym;
-      const tf=sec.symtf.match(/\b(1m|5m|15m|30m|1h|4h|daily|weekly)\b/i);if(tf)r.chart_timeframe=tf[1].length>3?tf[1][0].toUpperCase()+tf[1].slice(1).toLowerCase():tf[1].toLowerCase()}
+      const normTFv=raw=>{const s=String(raw).trim();let m=s.match(/^(15|30|5|1)\s*[- ]?(?:m|mins?|minutes?)$/i);if(m)return m[1]+"m";m=s.match(/^(4|1)\s*[- ]?(?:h|hrs?|hours?)$/i);if(m)return m[1]+"h";if(/^(1m|5m|15m|30m|1h|4h)$/i.test(s))return s.toLowerCase();if(/^daily$/i.test(s))return"Daily";if(/^weekly$/i.test(s))return"Weekly";return null};
+      const tf=sec.symtf.match(/\b(1m|5m|15m|30m|1h|4h|daily|weekly)\b/i)||sec.symtf.match(/\b((?:1|5|15|30)\s*[- ]?(?:m|mins?|minutes?)|(?:1|4)\s*[- ]?(?:h|hrs?|hours?))\b/i);
+      if(tf)r.chart_timeframe=normTFv(tf[1])}
     if(sec.ms){const m=sec.ms,tr=/broaden|megaphone/i.test(m)?"broadening":/down\s*trend|lower highs|still down|move is (still )?down|sellers (are )?in control|bearish structure/i.test(m)?"downtrend":/up\s*trend|higher highs|still up|move is (still )?up|buyers (are )?in control|bullish structure/i.test(m)?"uptrend":/range|sideways|basing|consolidat/i.test(m)?"range":null;
       const ev=m.match(/\b(BOS|CHoCH)\b(?:[^.\n]{0,20}?\b(up|down|bullish|bearish)\b)?/i);
       r.market_structure={trend:tr,swings:(m.match(/\b(HH|HL|LH|LL)\b/g)||[]).slice(-6),last_event:ev?(ev[1].toUpperCase()==="BOS"?"BOS":"CHoCH")+(ev[2]?" "+(/up|bull/i.test(ev[2])?"up":"down"):""):"none",event_price:ev?((b4=>{const all=[...b4.matchAll(/\d[\d,]*\.?\d*/g)].map(x=>price(x[0])).filter(x=>x!=null);return all.length?all[all.length-1]:null})(m.slice(Math.max(0,ev.index-60),ev.index))??price(m.slice(ev.index,ev.index+60))):null,note:lines(m)[0]||""};
@@ -1347,10 +1349,15 @@ Use null only for a price you truly cannot read from the axis.`}`;
     if(!r.chart_symbol){const sym=SYMS.slice().sort((a,b)=>b.length-a.length).find(k=>new RegExp("(?<![A-Za-z0-9])"+k+"(?![A-Za-z])").test(t))
         ||(/micro gold/i.test(t)?"MGC":/micro (e-mini )?nasdaq/i.test(t)?"MNQ":/micro (e-mini )?s&p/i.test(t)?"MES":/micro crude/i.test(t)?"MCL":null);if(sym)r.chart_symbol=sym}
     if(!r.chart_timeframe){const W="(?:chart|candles?|bars?|timeframe|tf)",norm=tm=>tm[1]?tm[1]+"m":tm[2]?tm[2]+"h":tm[3][0].toUpperCase()+tm[3].slice(1).toLowerCase();
-      const U="\\b(1|5|15|30)[- ]?(?:m|min|minute)s?\\b|\\b(1|4)[- ]?(?:h|hr|hour)s?\\b|\\b(daily|weekly)\\b";
-      const tm=t.match(new RegExp("(?:"+SYMS.join("|")+"|futures|gold|nasdaq|s&p)[^\\n]{0,40}?(?:"+U+")","i"))   /* "MGC, Micro Gold, 1-hour" */
-        ||t.match(new RegExp("(?:"+U.split("|").map(x=>x+"\\s+"+W).join("|")+")","i"));                           /* "1-hour candle" */
-      if(tm){const g=tm.slice(1).filter(x=>x!==undefined);const mm=tm[0].match(new RegExp(U,"i"));if(mm)r.chart_timeframe=norm(mm)}}
+      const U="\\b(15|30|5|1)[- ]?(?:m|min|minute)s?\\b|\\b(4|1)[- ]?(?:h|hr|hour)s?\\b|\\b(daily|weekly)\\b";
+      const stripped=t.replace(/\b(?:monthly|weekly|daily|1h|4h|15m|30m|5m|1m)\s+(?:green|red|bullish|bearish)\b/gi," ").replace(/\b(?:green|red|bullish|bearish)\s+(?:monthly|weekly|daily|1h|4h|15m|30m|5m|1m)\b/gi," ");
+      /* prefer entry/setup chart cues when several TFs appear */
+      const entryCue=stripped.match(new RegExp("\\b(?:on|trade(?:ing)?(?:\\s+the)?|entry\\s+on|setup\\s+on)\\s+(?:the\\s+)?(?:"+U+")","i"))
+        ||stripped.match(new RegExp("(?:"+U+")\\s+"+W,"i"));
+      const tm=entryCue
+        ||stripped.match(new RegExp("(?:"+SYMS.join("|")+"|futures|gold|nasdaq|s&p)[^\\n]{0,40}?(?:"+U+")","i"))
+        ||stripped.match(new RegExp("(?:"+U.split("|").map(x=>x+"\\s+"+W).join("|")+")","i"));
+      if(tm){const mm=tm[0].match(new RegExp(U,"i"));if(mm)r.chart_timeframe=norm(mm)}}
     return normalize(r);
   }
 
