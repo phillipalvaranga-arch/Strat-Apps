@@ -246,7 +246,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
       <div class="divider"></div>
       <div class="label">My rules</div>
       <div class="fields">
-        <div class="field"><label for="maxRisk">Max risk per trade <span class="hint">($)</span></label><input id="maxRisk" type="number" min="0" step="any" inputmode="decimal" value="100"></div>
+        <div class="field"><label for="maxRisk">Max risk per trade <span class="hint">($)</span></label><input id="maxRisk" type="number" min="0" step="any" inputmode="decimal" value="200"></div>
         <div class="field"><label for="ddAmt">Trailing drawdown <span class="hint">($)</span></label><input id="ddAmt" type="number" min="0" step="any" inputmode="decimal" placeholder="e.g. 2500"></div>
         <div class="field"><label for="ddPct">Max loss per trade <span class="hint">(% of drawdown)</span></label><input id="ddPct" type="number" min="0.1" step="any" inputmode="decimal" value="6.67"></div>
         <div class="field"><label for="msMode">Max stop from</label><select id="msMode"><option value="dd">From drawdown</option><option value="fixed">Fixed points</option></select></div>
@@ -258,7 +258,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
 <details class="ptref" id="ptRef" open>
   <summary>📏 Point reference</summary>
   <div class="ptref-body">
-    <p class="ptref-note" style="margin:0 0 6px">Your max risk per trade: <b id="ptRefRisk">$100</b></p>
+    <p class="ptref-note" style="margin:0 0 6px">Your max risk per trade: <b id="ptRefRisk">$200</b></p>
     <div class="ptref-wrap"><table>
       <thead><tr><th>Contract</th><th>$ per point</th><th>Tick size</th><th>$ per tick</th><th>Points for your max risk (1 contract)</th><th>(2 contracts)</th></tr></thead>
       <tbody id="ptRefBody"></tbody>
@@ -378,6 +378,8 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
   try{ if(!localStorage.getItem('trc-mig-r75-dd1500')){ const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(o && o.maxRisk!=null && String(o.maxRisk).trim()!=='' && +o.maxRisk===100){ o.maxRisk='75'; localStorage.setItem(KEY,JSON.stringify(o)); } const d=localStorage.getItem('trc-dd'); if(d==null||d===''||d==='""') localStorage.setItem('trc-dd','1500'); localStorage.setItem('trc-mig-r75-dd1500','true'); } }catch(e){}
   // one-time migration: max risk $75 -> $100 (new default)
   try{ if(!localStorage.getItem('trc-mig-r100')){ const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(o && o.maxRisk!=null && String(o.maxRisk).trim()!=='' && +o.maxRisk===75){ o.maxRisk='100'; localStorage.setItem(KEY,JSON.stringify(o)); } localStorage.setItem('trc-mig-r100','true'); } }catch(e){}
+  // one-time migration: max risk $100 -> $200 (new default)
+  try{ if(!localStorage.getItem('trc-mig-r200')){ const o=JSON.parse(localStorage.getItem(KEY)||'null'); if(o && o.maxRisk!=null && String(o.maxRisk).trim()!=='' && +o.maxRisk===100){ o.maxRisk='200'; localStorage.setItem(KEY,JSON.stringify(o)); } localStorage.setItem('trc-mig-r200','true'); } }catch(e){}
   // one-time migration: drawdown % 5 -> 6.67 (6.67% of $1,500 = about $100)
   try{ if(!localStorage.getItem('trc-mig-pct667')){ const v=localStorage.getItem('trc-dd-pct'); let n=NaN; try{ const j=JSON.parse(v); n=(j===''||j==null)?NaN:+j; }catch(e){} if(n===5) localStorage.setItem('trc-dd-pct','6.67'); localStorage.setItem('trc-mig-pct667','true'); } }catch(e){}
   try{
