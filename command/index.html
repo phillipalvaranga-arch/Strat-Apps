@@ -127,38 +127,52 @@ window.V2KIT=(function(){
 <style id="tcCss">
 /* Trade check panel */
 .tc{--tc-ok:var(--bull);--tc-bad:var(--bear);--tc-warn:var(--warn);--tc-bg:var(--panel2);--tc-mono:var(--f-mono);--tc-head:var(--f-display);--tc-body:var(--f-body)}
-.tc{border:1px solid var(--line);border-left:5px solid var(--tc-ok);border-radius:10px;padding:12px;background:var(--panel);display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:1.45;min-width:0;color:var(--fg)}
-.tc.warn{border-left-color:var(--tc-warn)}.tc.bad{border-left-color:var(--tc-bad)}
-.tc-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
-.tc-badge{font:700 14px/1 var(--tc-head);letter-spacing:.08em;padding:6px 10px;border-radius:6px;border:2px solid currentColor;color:var(--tc-ok);background:color-mix(in srgb,currentColor 12%,transparent);white-space:nowrap}
-.tc.warn .tc-badge{color:var(--tc-warn)}.tc.bad .tc-badge{color:var(--tc-bad)}
-.tc-sum{font-weight:600;min-width:0;flex:1 1 200px}
-.tc-h{margin:8px 0 2px;font:700 12px/1.2 var(--tc-head);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.tc{container-type:inline-size;display:block;min-width:0;color:var(--fg);font-size:14px;line-height:1.45}
+.tc-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+@container (max-width:680px){.tc-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:720px){.tc-grid{grid-template-columns:minmax(0,1fr)}}
+.tc-card{background:var(--tc-bg);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;min-width:0}
+.tc-card h3{margin:0 0 14px;font:600 12px/1 var(--tc-head);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tc-row{display:flex;gap:10px;align-items:flex-start;margin:0 0 12px}
+.tc-row:last-of-type{margin-bottom:2px}
+.tc-ico{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:0 0 22px;margin-top:1px;font:700 13px/1 var(--tc-mono);font-style:normal}
+.tc-ico.ok{background:#1f9d55;color:#fff}
+.tc-ico.bad{background:#e24b4b;color:#fff}
+.tc-ico.warn{background:#e39b12;color:#1a1408}
+.tc-row span{min-width:0}
+.tc-fixcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;margin:0 0 12px}
+.tc-fixcard:last-child{margin-bottom:0}
+.tc-fixcard b{display:block;font-size:15.5px;line-height:1.3;margin:0 0 6px;font-weight:700}
+.tc-fixcard p{margin:0 0 12px}
+.tc button.tc-use{appearance:none;background:#3b82f6;color:#fff;border:1px solid #3b82f6;border-radius:8px;padding:8px 14px;font:600 14px/1.2 var(--tc-body);cursor:pointer;width:auto}
+.tc button.tc-use:hover{background:#2f6fe0;border-color:#2f6fe0;color:#fff}
+.tc button.tc-use:focus-visible{outline:2px solid #93c5fd;outline-offset:2px}
+.tc-empty{margin:0;color:var(--muted)}
+.tc-more{margin-top:14px;border-top:1px solid var(--line);padding-top:8px}
+.tc-more>summary{cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;list-style:none}
+.tc-more>summary::-webkit-details-marker{display:none}
+.tc-more>summary::before{content:"▶  ";font-size:10px}
+.tc-more[open]>summary::before{content:"▼  "}
+.tc-h{margin:10px 0 4px;font:700 11px/1.2 var(--tc-head);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .tc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
-.tc-list li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:6px;align-items:start}
+.tc-list li{display:grid;grid-template-columns:18px minmax(0,1fr);gap:6px;align-items:start}
 .tc-list b{font-family:var(--tc-mono);font-weight:600}
-.tc i{font-style:normal;font-weight:700;font-family:var(--tc-mono);text-align:center}
-.tc .ok>i,.tc tr.ok i,.tc-line.ok{color:var(--tc-ok)}
-.tc .warn>i,.tc tr.warn i,.tc-line.warn{color:var(--tc-warn)}
-.tc .bad>i,.tc tr.bad i,.tc-line.bad{color:var(--tc-bad)}
-.tc-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
-@media (max-width:560px){.tc-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.tc-stats>div{background:var(--tc-bg);border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:flex;flex-direction:column;min-width:0}
-.tc-stats span{font-size:11px;color:var(--muted);line-height:1.25}
-.tc-stats b{font:600 17px/1.3 var(--tc-mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.tc-stats small{font-size:11px;color:var(--muted)}
+.tc-list i{font-style:normal;font-weight:700;font-family:var(--tc-mono)}
+.tc-list .ok i{color:var(--tc-ok)}.tc-list .warn i{color:var(--tc-warn)}.tc-list .bad i{color:var(--tc-bad)}
+.tc-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.tc-stats>div{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 8px;display:flex;flex-direction:column;min-width:0}
+.tc-stats span,.tc-stats small{font-size:11px;color:var(--muted);line-height:1.25}
+.tc-stats b{font:600 15px/1.3 var(--tc-mono);font-variant-numeric:tabular-nums}
 .tc-stats .ok b{color:var(--tc-ok)}.tc-stats .warn b{color:var(--tc-warn)}.tc-stats .bad b{color:var(--tc-bad)}
-.tc-line{margin:2px 0 0;font-weight:600}
+.tc-line{margin:6px 0 0;font-weight:600;font-size:13px}
+.tc-line.ok{color:var(--tc-ok)}.tc-line.warn{color:var(--tc-warn)}.tc-line.bad{color:var(--tc-bad)}
 .tc-tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tc-t{width:100%;border-collapse:collapse;font:500 13px var(--tc-mono);font-variant-numeric:tabular-nums}
+.tc-t{width:100%;border-collapse:collapse;font:500 12px var(--tc-mono);font-variant-numeric:tabular-nums}
 .tc-t th,.tc-t td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
-.tc-t th{font:600 11px var(--tc-body);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.tc-t th{font:600 10px var(--tc-body);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .tc-t th:first-child,.tc-t td:first-child{text-align:left}
-@media (max-width:480px){.tc-t th,.tc-t td{padding:4px 3px;font-size:12px}.tc-t th{font-size:10px;letter-spacing:.03em}}
 .tc-t tr.ok td:last-child b{color:var(--tc-ok)}.tc-t tr.warn td:last-child b{color:var(--tc-warn)}.tc-t tr.bad td:last-child b{color:var(--tc-bad)}
-.tc-note{margin:2px 0 0;font-size:12px;color:var(--muted)}
-.tc-fix{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px}
-.tc.pass .tc-fix{color:var(--tc-ok);font-weight:600}
+.tc-note{margin:4px 0 0;font-size:12px;color:var(--muted)}
 #tcCard label.tc-qty{flex-direction:row;align-items:center;gap:8px}#tcCard label.tc-qty input{width:90px}
 </style>
 
@@ -477,7 +491,7 @@ details summary{cursor:pointer;font-weight:600}
           <h2>Trade check</h2>
           <label class="f tc-qty">Contracts I'll trade<input id="tcQty" type="number" min="1" step="1" inputmode="numeric" placeholder="Auto"></label>
         </div>
-        <p class="hint">Checks the plan above against your rules: valid levels, risk vs your max risk per trade, reward : risk vs your minimum, and what to change. Leave contracts on Auto to use the size the app picked.</p>
+        <p class="hint">Checks the plan above against your rules. Press Use this on a fix to apply it. Leave contracts on Auto to use the size the app picked.</p>
         <div id="tcOut" aria-live="polite"></div>
       </section>
 
@@ -804,9 +818,10 @@ function msPV(){const I=inst();return I&&I.tick?I.tv/I.tick:0}
 function msUpdate(p){const pv=msPV(),mt=p?metrics(p):null,q=mt&&mt.qty>0?mt.qty:1;const m=p?msInfo(p.entry,p.stop,pv,q):null;
   ["msSig","msPlan"].forEach(id=>{const el=$(id);if(!el)return;el.hidden=!m;if(m){el.className="msn"+(m.over?" over":"");el.textContent=(m.over?"⚠ ":"")+m.text}});
   const inf=$("msInfo");if(inf)inf.textContent=msLimitLine(pv,q,settings.inst)}
-/* ---------- Trade check (display only: reads the plan, never changes it) ----------
+/* ---------- Trade check ----------
    tcEval(o) checks: 1) entry / stop / targets are valid for the direction and the Strat trigger bar,
-   2) $ risk vs your max risk, 3) reward and R:R per target vs your minimum, 4) plain-English fixes.
+   2) $ risk vs your max risk, 3) reward and R:R per target vs your minimum, 4) fixes.
+   Use this writes the chosen size or level back into the plan, then the check runs again.
    o = {dir, entry, stop, targets[], tick, pv ($ per 1.0 point per contract/share), qty, qtyAuto, maxRisk, minRR, maxC,
         unit:"contract"|"share", sym, micro:{sym,pv}|null, expect:{long:{entry,stop},short:{entry,stop},label}|null,
         orderType, last, maxStop:{over,pts,maxPts}|null, fmt(price), usd(dollars)} */
@@ -907,31 +922,86 @@ function tcEval(o){
   R.status=all.indexOf("bad")>=0?"bad":all.indexOf("warn")>=0?"warn":"pass";
   if(R.status==="pass"&&!R.fixes.length)R.fixes.push("All good, trade fits your plan.");
   R.best=R.tgts.length?R.tgts.reduce((a,b)=>b.rr>a.rr?b:a):null;
+  const money2=v=>"$"+(Math.round((+v)*100)/100).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const ratio=n=>{const x=Math.round(n*100)/100;return "1 : "+String(x)};
+  const noun=n=>n+" "+unit+(n===1?"":"s");
+  R.checks=[];R.actions=[];
+  const maxOver=!!(valid&&o.maxStop&&o.maxStop.over);
+  const levelView=R.levels.map(l=>{
+    if(!(maxOver&&l.k==="Stop"))return l;
+    const why=String(l.why||"").replace(/\s*[\d.]+ pts is over your [\d.]+ pt max stop\.?/,"").trim();
+    if(l.st==="warn"&&(/^(At the |On the right side|Valid price)/.test(why)||!why))return {k:l.k,st:"ok",why:why||l.why};
+    return {k:l.k,st:l.st,why:why||l.why};
+  });
+  const badL=levelView.filter(l=>l.st==="bad"),warnL=levelView.filter(l=>l.st==="warn");
+  if(badL.length)R.checks.push({st:"bad",t:badL.map(l=>l.k+": "+l.why).join(" ")});
+  else if(warnL.length)R.checks.push({st:"warn",t:warnL.map(l=>l.k+": "+l.why).join(" ")});
+  else R.checks.push({st:"ok",t:"Levels are valid for a "+(dir==="long"?"buy (long)":"sell (short)")+" trade."});
+  if(maxOver)R.checks.push({st:"warn",t:"Stop loss is "+r2(o.maxStop.pts)+" pts, over your "+r2(o.maxStop.maxPts)+" pt max stop."});
+  const rk=R.risk;
+  if(rk&&!rk.none&&rk.perC!=null){
+    const on=rk.qty>1?" on "+rk.qty+" "+unit+"s":"";
+    R.checks.push(rk.ok
+      ?{st:"ok",t:"Risk of "+money2(rk.total)+on+" is within your "+money2(R.maxRisk)+" limit."}
+      :{st:"bad",t:"Risk of "+money2(rk.total)+on+" is over your "+money2(R.maxRisk)+" limit by "+money2(rk.total-R.maxRisk)+"."});
+  }else if(rk&&rk.none)R.checks.push({st:"warn",t:rk.why});
+  else R.checks.push({st:valid?"warn":"bad",t:"Needs a valid entry and stop to measure risk."});
+  if(R.tgts.length){
+    const t1=R.tgts[0],best=R.best;
+    if(t1.rr>=minRR-1e-9)R.checks.push({st:"ok",t:"Reward : risk of "+ratio(t1.rr)+" meets your minimum of "+ratio(minRR)+"."});
+    else if(best&&best.rr>=minRR-1e-9)R.checks.push({st:"warn",t:"Reward : risk of "+ratio(best.rr)+" on "+best.k+" meets your minimum of "+ratio(minRR)+". "+t1.k+" is only "+ratio(t1.rr)+"."});
+    else R.checks.push({st:best&&best.rr>=1?"warn":"bad",t:"Reward : risk of "+ratio((best||t1).rr)+" is under your minimum of "+ratio(minRR)+"."});
+  }else R.checks.push({st:valid?"bad":"warn",t:valid?"No target is on the profit side, so reward : risk can't be checked.":"Reward : risk needs a valid entry, stop and target."});
+  const acts=[],seen={};
+  const add=a=>{const k=a.kind+"|"+(a.price!=null?a.price:"")+"|"+(a.qty!=null?a.qty:"")+"|"+(a.sym||"")+"|"+(a.i!=null?a.i:"");if(seen[k])return;seen[k]=1;acts.push(a)};
+  if(valid&&pv&&rk&&!rk.none){
+    if(rk.qty>rk.maxQty&&rk.maxQty>=1)add({title:"Trade "+noun(rk.maxQty)+" instead of "+rk.qty,body:"Risk becomes "+money2(rk.maxQty*rk.perC)+". Your levels stay the same.",kind:"qty",qty:rk.maxQty});
+    else if(o.maxC>0&&rk.qty>o.maxC){const n=Math.max(1,Math.min(Math.floor(o.maxC),rk.maxQty||Math.floor(o.maxC)));add({title:"Trade "+noun(n)+" instead of "+rk.qty,body:"Your max is "+o.maxC+". Risk becomes "+money2(n*rk.perC)+". Your levels stay the same.",kind:"qty",qty:n})}
+    if(!rk.ok){
+      const pq=Math.floor((maxRisk/(pv*rk.qty)+1e-9)/tick)*tick;
+      if(pq>=tick){const price=rt(e-sign*pq);if(Math.abs(price-s)>tick/2)add({title:"Move stop loss to "+fmt(price),body:"Keeps "+noun(rk.qty)+" with "+money2(maxRisk)+" risk. That is a "+r2(pq)+" pt stop. Make sure it isn't too tight for normal price swings.",kind:"stop",price:price})}
+      if(rk.maxQty<1&&o.micro&&o.micro.pv>0){const mr=Math.abs(e-s)*o.micro.pv;add({title:"Trade "+o.micro.sym+" instead of "+(o.sym||"this contract"),body:"1 "+unit+" risks "+money2(mr)+".",kind:"sym",sym:o.micro.sym})}
+    }else if(maxOver){
+      const mp=Math.floor((o.maxStop.maxPts+1e-9)/tick)*tick;
+      if(mp>=tick){const price=rt(e-sign*mp);if(Math.abs(price-s)>tick/2)add({title:"Move stop loss to "+fmt(price),body:"Brings the stop to your "+r2(o.maxStop.maxPts)+" pt max. Risk becomes "+money2(mp*pv*rk.qty)+". Make sure it isn't too tight for normal price swings.",kind:"stop",price:price})}
+    }
+  }
+  if(e==null&&ex&&fin(ex.entry))add({title:"Set entry to "+fmt(rt(ex.entry)),body:"That is the Strat trigger.",kind:"entry",price:rt(ex.entry)});
+  else if(e!=null&&ex&&fin(ex.entry)&&Math.abs(e-ex.entry)>tick/2&&!mismatch)add({title:"Move entry to "+fmt(rt(ex.entry)),body:sign*(e-ex.entry)<0?"The current entry can fill before the setup bar breaks.":"The current entry is past the trigger, so you'd be chasing.",kind:"entry",price:rt(ex.entry)});
+  if(s==null&&ex&&fin(ex.stop))add({title:"Set stop loss to "+fmt(rt(ex.stop)),body:"That is the "+exLabel+".",kind:"stop",price:rt(ex.stop)});
+  else if(s!=null&&e!=null&&ex&&fin(ex.stop)&&Math.abs(s-ex.stop)>tick/2&&sign*(e-s)>0&&!mismatch){const price=rt(ex.stop);if(!acts.some(a=>a.kind==="stop"&&Math.abs(a.price-price)<=tick/2))add({title:"Move stop loss to "+fmt(price),body:"Puts the stop at the "+exLabel+".",kind:"stop",price:price})}
+  if(e!=null&&offGrid(e))add({title:"Round entry to "+fmt(rt(e)),body:"Puts the entry on the "+tick+" tick grid.",kind:"entry",price:rt(e)});
+  if(s!=null&&offGrid(s))add({title:"Round stop loss to "+fmt(rt(s)),body:"Puts the stop on the "+tick+" tick grid.",kind:"stop",price:rt(s)});
+  tVals.forEach(x=>{if(e!=null&&offGrid(x.t)&&sign*(x.t-e)>0)add({title:"Round Target "+(x.i+1)+" to "+fmt(rt(x.t)),body:"Puts the target on the "+tick+" tick grid.",kind:"target",i:x.i,price:rt(x.t)})});
+  if(valid&&R.best&&R.best.rr<minRR-1e-9){const need=rt(e+sign*Math.abs(e-s)*minRR);add({title:"Set Target 1 to "+fmt(need),body:"That is your minimum of "+ratio(minRR)+" on this stop. Only use it if price can reach it.",kind:"target",i:0,price:need})}
+  R.actions=acts;
   return R;
 }
 function tcHTML(R,o){
   const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const fmt=o.fmt,usd=o.usd,mk={ok:"✓",warn:"!",bad:"✕"},unit=R.unit,pl=n=>n+" "+unit+(n===1?"":"s");
-  const badge={pass:"PASS",warn:"CHECK",bad:"FIX FIRST"}[R.status];
-  const head={pass:"All good: levels valid, risk within "+usd(R.maxRisk)+", reward at or above "+R.minRR+"R.",warn:"Tradeable, but check the amber items.",bad:"Don't place it as-is. Fix the red items first."}[R.status];
+  const checks=(R.checks||[]).map(c=>'<div class="tc-row"><i class="tc-ico '+c.st+'" aria-hidden="true">'+mk[c.st]+'</i><span>'+esc(c.t)+'</span></div>').join("");
+  const acts=R.actions||[];
+  let adj;
+  if(acts.length)adj=acts.map(a=>'<div class="tc-fixcard"><b>'+esc(a.title)+'</b><p>'+esc(a.body)+'</p><button type="button" class="tc-use" data-tc-kind="'+esc(a.kind)+'"'+(a.qty!=null?' data-tc-qty="'+a.qty+'"':'')+(a.price!=null?' data-tc-price="'+a.price+'"':'')+(a.i!=null?' data-tc-i="'+a.i+'"':'')+(a.sym?' data-tc-sym="'+esc(a.sym)+'"':'')+' aria-label="Use this: '+esc(a.title)+'">Use this</button></div>').join("");
+  else if((R.checks||[]).every(c=>c.st==="ok"))adj='<p class="tc-empty">Nothing to change. This trade fits your plan.</p>';
+  else adj=(R.fixes||[]).filter(f=>f!=="All good, trade fits your plan.").map(f=>'<div class="tc-fixcard"><p>'+esc(f)+'</p></div>').join("")||'<p class="tc-empty">Adjust the levels above.</p>';
   const rk=R.risk;
-  const lv=R.levels.map(l=>'<li class="'+l.st+'"><i>'+mk[l.st]+'</i><span><b>'+esc(l.k)+(l.price!=null&&isFinite(l.price)?" "+esc(fmt(l.price)):"")+'</b> '+esc(l.why)+'</span></li>').join("");
+  const lv=(R.levels||[]).map(l=>'<li class="'+l.st+'"><i>'+mk[l.st]+'</i><span><b>'+esc(l.k)+(l.price!=null&&isFinite(l.price)?" "+esc(fmt(l.price)):"")+'</b> '+esc(l.why)+'</span></li>').join("");
   let risk="";
   if(rk&&rk.none)risk='<p class="tc-note">'+esc(rk.why)+'</p>';
   else if(rk)risk='<div class="tc-stats"><div><span>Risk per '+unit+'</span><b>'+esc(usd(rk.perC))+'</b><small>'+esc(String(+rk.pts.toFixed(4)))+' pts</small></div><div><span>Your size</span><b>'+rk.qty+'</b><small>'+(rk.qtyAuto?"auto":"you set")+'</small></div><div class="'+rk.st+'"><span>Total risk</span><b>'+esc(usd(rk.total))+'</b><small>limit '+esc(usd(R.maxRisk))+'</small></div><div><span>Max size for '+esc(usd(R.maxRisk))+'</span><b>'+rk.maxQty+'</b><small>'+(rk.maxQty>=1?esc(usd(rk.maxQty*rk.perC)):"none fits")+'</small></div></div>'+
-    '<p class="tc-line '+rk.st+'"><i>'+mk[rk.st]+'</i> '+(rk.ok?esc(pl(rk.qty)+" × "+usd(rk.perC)+" = "+usd(rk.total)+", within your "+usd(R.maxRisk)+" limit."):esc(pl(rk.qty)+" × "+usd(rk.perC)+" = "+usd(rk.total)+", over your "+usd(R.maxRisk)+" limit by "+usd(rk.total-R.maxRisk)+"."))+'</p>';
+    '<p class="tc-line '+rk.st+'">'+(rk.ok?esc(pl(rk.qty)+" × "+usd(rk.perC)+" = "+usd(rk.total)+", within your "+usd(R.maxRisk)+" limit."):esc(pl(rk.qty)+" × "+usd(rk.perC)+" = "+usd(rk.total)+", over your "+usd(R.maxRisk)+" limit by "+usd(rk.total-R.maxRisk)+"."))+'</p>';
   else risk='<p class="tc-note">Needs a valid entry and stop to measure risk.</p>';
   let rw="";
   if(R.tgts.length)rw='<div class="tc-tw"><table class="tc-t"><thead><tr><th>Target</th><th>Price</th><th>Points</th><th>Reward</th><th>R:R</th></tr></thead><tbody>'+
-    R.tgts.map(t=>'<tr class="'+t.st+'"><td>T'+(t.i+1)+'</td><td>'+esc(fmt(t.price))+'</td><td>+'+esc(String(+t.pts.toFixed(4)))+'</td><td>'+(t.usd!=null?"+"+esc(usd(t.usd)):"—")+'</td><td><b>'+t.rr.toFixed(1)+'R</b> <i>'+mk[t.st]+'</i></td></tr>').join("")+
-    '</tbody></table></div><p class="tc-note">Reward uses '+pl(rk&&!rk.none?rk.qty:1)+'. Minimum reward : risk is '+R.minRR+'R'+(rk&&!rk.none?" (risk "+esc(usd(rk.total))+")":"")+'.</p>';
+    R.tgts.map(t=>'<tr class="'+t.st+'"><td>T'+(t.i+1)+'</td><td>'+esc(fmt(t.price))+'</td><td>+'+esc(String(+t.pts.toFixed(4)))+'</td><td>'+(t.usd!=null?"+"+esc(usd(t.usd)):"—")+'</td><td><b>'+t.rr.toFixed(1)+'R</b></td></tr>').join("")+
+    '</tbody></table></div><p class="tc-note">Minimum reward : risk is '+R.minRR+'R'+(rk&&!rk.none?" (risk "+esc(usd(rk.total))+")":"")+'.</p>';
   else rw='<p class="tc-note">No valid target to measure yet.</p>';
-  return '<div class="tc '+R.status+'" role="region" aria-label="Trade check">'+
-    '<div class="tc-head"><span class="tc-badge">'+mk[R.status==="pass"?"ok":R.status]+' '+badge+'</span><span class="tc-sum">'+esc(head)+'</span></div>'+
-    '<p class="tc-h">1 · Levels ('+(R.dir==="long"?"long: stop < entry < targets":"short: targets < entry < stop")+')</p><ul class="tc-list">'+lv+'</ul>'+
-    '<p class="tc-h">2 · Risk vs your '+esc(usd(R.maxRisk))+' limit</p>'+risk+
-    '<p class="tc-h">3 · Reward &amp; risk</p>'+rw+
-    '<p class="tc-h">4 · What to adjust</p><ol class="tc-fix">'+R.fixes.map(f=>'<li>'+esc(f)+'</li>').join("")+'</ol></div>';
+  const detail='<p class="tc-h">Levels</p><ul class="tc-list">'+lv+'</ul><p class="tc-h">Risk</p>'+risk+'<p class="tc-h">Reward</p>'+rw;
+  return '<div class="tc" role="region" aria-label="Trade check"><div class="tc-grid">'+
+    '<section class="tc-card" aria-label="Checks"><h3>Checks</h3>'+checks+'<details class="tc-more"><summary>Details</summary>'+detail+'</details></section>'+
+    '<section class="tc-card" aria-label="What to adjust"><h3>What to adjust</h3>'+adj+'</section></div></div>';
 }
 const TC_MICRO={ES:"MES",NQ:"MNQ",YM:"MYM",RTY:"M2K",GC:"MGC",SI:"SIL",HG:"MHG",CL:"MCL",NG:"MNG","6E":"M6E"};
 function renderTC(p,m){
@@ -948,6 +1018,15 @@ function renderTC(p,m){
     maxStop:Number.isFinite(p.entry)&&Number.isFinite(p.stop)?msInfo(p.entry,p.stop,pv,qty):null,fmt,usd:msUsd};
   el.innerHTML=tcHTML(tcEval(o),o);
 }
+$("tcOut").addEventListener("click",e=>{
+  const b=e.target.closest("[data-tc-kind]");if(!b)return;
+  const kind=b.dataset.tcKind,price=b.dataset.tcPrice;
+  if(kind==="qty"){$("tcQty").value=b.dataset.tcQty;render();return}
+  if(kind==="entry"){$("pEntry").value=price;readPlanInputs();render();return}
+  if(kind==="stop"){$("pStop").value=price;readPlanInputs();render();return}
+  if(kind==="target"){const id=["pT1","pT2","pT3"][+b.dataset.tcI];if(id&&$(id)){$(id).value=price;readPlanInputs();render()}return}
+  if(kind==="sym"){const s=document.getElementById("inst");if(s&&[...s.options].some(o=>o.value===b.dataset.tcSym)){s.value=b.dataset.tcSym;s.dispatchEvent(new Event("change"))}}
+});
 /* ---------- end trade check ---------- */
 function render(){
   const g=grade();
