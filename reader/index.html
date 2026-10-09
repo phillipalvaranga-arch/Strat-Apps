@@ -745,6 +745,69 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
 </div>
 <div class="toast" id="toast" hidden=""></div>
 
+<script id="strat-tp">
+/* STRAT-TP shared v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
+   Five take-profit levels: analysis targets first, then R-multiples of the trader's own entry/stop (math only, never chart levels). */
+(function(g){
+  var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)&&n>0?n:null};
+  var PR=/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d{2,}/g;
+  var firstP=function(s){s=String(s||"").replace(/\([^)]*\b(?:R|pts?|points?|ticks?)\b[^)]*\)/gi," ").replace(/\b\d+(?:\.\d+)?\s*(?:R|pts?|points?|ticks?|contracts?|%|x)\b/gi," ").replace(/\$\s?[\d,.]+/g," ").replace(/\b(?:tp|target|t)\s*[1-5]\b/gi," ");var m=s.match(PR);if(!m)return null;for(var i=0;i<m.length;i++){var v=NUM(m[i]);if(v!=null&&v>=10)return v}return null};
+  /* up to 5 target prices named in a Claude answer (JSON first, then text) */
+  function targets(text){
+    var t=String(text==null?"":text).replace(/\r/g,"").replace(/[\u201c\u201d]/g,'"'),out=[],k,m,j;
+    var put=function(i,v){if(v!=null&&i>=0&&i<5&&out[i]==null)out[i]=v};
+    ["_price",""].forEach(function(suf){for(k=1;k<=5;k++){var re=new RegExp('"(?:target_?'+k+'|tp_?'+k+'|take_?profit_?'+k+')'+suf+'"\\s*:\\s*"?([\\d,.]+)',"i");if((m=t.match(re)))put(k-1,NUM(m[1]))}});
+    if((m=t.match(/"(?:targets|take_profits|tps|target_prices)"\s*:\s*\[([^\]]*)\]/i))){m[1].split(",").forEach(function(x,i){var v=NUM(x);if(v!=null&&v>=10){var s=0;while(out[s]!=null&&s<5)s++;if(s<5&&out.indexOf(v)<0)out[s]=v}})}
+    var ORD={first:1,"1st":1,second:2,"2nd":2,third:3,"3rd":3,fourth:4,"4th":4,fifth:5,"5th":5};
+    var segs=[];t.split("\n").forEach(function(raw){if(/^\s*"/.test(raw.trim()))return;var l=raw.replace(/[*_`#>|]+/g," ").replace(/^\s*[-•]\s*/,"").trim();
+      l.split(/[;,]?\s*(?=\b(?:target|tp|take\s*profit)\s*#?\s*[1-5]\b|\b(?:first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?(?:target|take\s*profit|tp)\b)/i).forEach(function(x){x=x.trim();if(x)segs.push(x)})});
+    segs.forEach(function(l){
+      if((m=l.match(/^(?:target|tp|take\s*profit|t|profit\s*target)\s*#?\s*([1-5])\b[^:\d]*:?\s*(.*)$/i))){put(+m[1]-1,firstP(m[2]));return}
+      if((m=l.match(/^(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?(?:target|take\s*profit|tp)\b[^:\d]*:?\s*(.*)$/i))){put(ORD[m[1].toLowerCase()]-1,firstP(m[2]));return}
+      if((m=l.match(/^(?:targets?|take\s*profits?|tps?|profit\s*targets?)\b\s*:?\s*(.*)$/i))&&m[1]){var parts=m[1].replace(/\([^)]*\)/g," ").split(/\s*(?:\/|,\s(?=\D)|;|→|->|\bthen\b|\band\b)\s*/i);
+        parts.forEach(function(p){var v=firstP(p);if(v!=null&&out.indexOf(v)<0){var s=0;while(out[s]!=null&&s<5)s++;if(s<5)out[s]=v}})}});
+    var r=[];for(k=0;k<5;k++)if(out[k]!=null)r.push(out[k]);
+    return r.filter(function(v,i){return r.indexOf(v)===i});
+  }
+  /* opts: {dir, entry, stop, targets[], pv ($ per point per contract), qty, tick, srcLabel} */
+  function build(o){
+    var e=NUM(o.entry),s=NUM(o.stop);if(e==null||s==null||e===s)return {need:true,rows:[]};
+    var dir=o.dir==="long"||o.dir==="short"?o.dir:(s<e?"long":"short"),sg=dir==="long"?1:-1,R=Math.abs(e-s);
+    if(sg*(e-s)<=0)return {need:true,wrong:true,rows:[]};
+    var tick=NUM(o.tick)||0.25,pv=NUM(o.pv),q=Math.max(1,Math.floor(NUM(o.qty)||1));
+    var rt=function(p){var d=Math.max(0,(String(tick).split(".")[1]||"").length);return +(Math.round(p/tick)*tick).toFixed(d)};
+    var seen={},an=[];(o.targets||[]).forEach(function(x){var v=NUM(x&&typeof x==="object"?x.price:x);if(v==null||sg*(v-e)<=0||Math.abs(v-e)>e*0.1||seen[v])return;seen[v]=1;an.push({price:v,src:"a",label:x&&typeof x==="object"&&x.label?x.label:null})});
+    var rows=an.sort(function(a,b){return sg*(a.price-b.price)}).slice(0,5);
+    var lastR=rows.length?sg*(rows[rows.length-1].price-e)/R:0,step=Math.floor(lastR+1e-9)+1;
+    while(rows.length<5){rows.push({price:rt(e+sg*step*R),src:"r",step:step});step++}
+    rows.forEach(function(x,i){x.n=i+1;x.pts=sg*(x.price-e);x.r=x.pts/R;x.perC=pv?x.pts*pv:null;x.total=pv?x.pts*pv*q:null});
+    var scale=null;if(q>=2&&pv){var n=Math.min(q,5),base=Math.floor(q/n),extra=q%n,split=[],tot=0;for(var i=0;i<n;i++){var c=base+(i<extra?1:0);split.push(c);tot+=c*rows[i].pts*pv}scale={split:split,total:tot}}
+    return {need:false,dir:dir,R:R,qty:q,pv:pv,rows:rows,scale:scale,srcLabel:o.srcLabel||"from analysis"};
+  }
+  function usd(v){return v==null?"—":(v<0?"-":"")+"$"+Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function html(res,fmt){
+    fmt=fmt||function(p){return (+p).toLocaleString("en-US",{maximumFractionDigits:2})};
+    var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+    var h='<div class="tp5" role="region" aria-label="Five take profits"><p class="tp5-h">Take profits 1–5</p>';
+    if(!res||res.need)return h+'<p class="tp5-need">'+(res&&res.wrong?"Stop is on the wrong side of the entry.":"Need entry and stop.")+'</p></div>';
+    h+='<div class="tp5-w"><table class="tp5-t"><thead><tr><th>TP</th><th>Price</th><th>Pts</th><th>R</th><th>$/ct</th><th>$ × '+res.qty+'</th><th>Source</th></tr></thead><tbody>';
+    res.rows.forEach(function(x){h+='<tr class="tp5-'+x.src+'"><td>TP'+x.n+'</td><td><b>'+esc(fmt(x.price))+'</b></td><td>'+(res.dir==="long"?"+":"−")+x.pts.toFixed(2)+'</td><td>'+x.r.toFixed(1)+'R</td><td>'+esc(usd(x.perC))+'</td><td>'+esc(usd(x.total))+'</td><td><span class="tp5-s">'+(x.src==="a"?esc(x.label||res.srcLabel):"R-multiple (math only, not a level)")+'</span></td></tr>'});
+    h+='</tbody></table></div>';
+    if(res.scale)h+='<p class="tp5-n">Scale-out example: '+res.scale.split.map(function(c,i){return c+" @ TP"+(i+1)}).join(", ")+' = '+esc(usd(res.scale.total))+' if all fill.</p>';
+    if(res.rows.some(function(x){return x.src==="r"}))h+='<p class="tp5-n">R-multiple rows are math from your entry and stop, not chart levels. Check the chart before using them.</p>';
+    return h+'</div>';
+  }
+  if(typeof document!=="undefined"&&!document.getElementById("tp5-css")){var st=document.createElement("style");st.id="tp5-css";
+    st.textContent='.tp5{margin-top:10px;font-size:13px}.tp5-h{margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.7}'+
+    '.tp5-w{overflow-x:auto;max-width:100%}.tp5-t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:440px}'+
+    '.tp5-t th,.tp5-t td{padding:4px 6px;border-bottom:1px solid rgba(128,128,128,.25);text-align:right;white-space:nowrap}.tp5-t th:first-child,.tp5-t td:first-child,.tp5-t th:last-child,.tp5-t td:last-child{text-align:left}'+
+    '.tp5-t th{font-size:11px;font-weight:600;opacity:.75}.tp5-r td{opacity:.72}.tp5-r td:first-child{font-style:italic}'+
+    '.tp5-s{font-size:11px;padding:1px 6px;border-radius:99px;border:1px solid rgba(128,128,128,.4);white-space:nowrap}.tp5-a .tp5-s{border-color:rgba(40,170,110,.8)}'+
+    '.tp5-n,.tp5-need{margin:6px 0 0;font-size:12px;opacity:.8}@media (max-width:520px){.tp5-t{font-size:12px}.tp5-t th,.tp5-t td{padding:3px 4px}}';
+    (document.head||document.documentElement).appendChild(st)}
+  g.stratTargets=targets;g.stratTPs=build;g.stratTPHTML=html;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
 <script id="strat-rules">
 /* STRAT-RULES shared v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
    Established Strat practice turned into pass / warn / fail checks. Uses only data the app already has
@@ -1181,6 +1244,10 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     const qty=r.contracts>0?r.contracts:(risk>0&&pv?Math.floor(+$("rMax").value/(risk*pv)):null);
     return{sym,pv,side,e,s,t1,t2,risk,fmt,qty};
   }
+  /* TP1-TP5: Claude's targets first, then R-multiples of the entry and stop (math only, not levels) */
+  function tp5Of(r,P){if(!window.stratTPs)return"";
+    const q=r.contracts>0?r.contracts:(typeof aQty==="function"&&aQty()>0?aQty():(P.qty>0?P.qty:1));
+    return stratTPHTML(stratTPs({dir:P.side==="long"||P.side==="short"?P.side:null,entry:P.e,stop:P.s,targets:[P.t1,P.t2].filter(v=>v!=null).concat(Array.isArray(r.tp_all)?r.tp_all:[]),pv:P.pv,tick:TICK[P.sym]||0.25,qty:q}),v=>P.fmt(+v))}
   function planCard(r){
     const P=plan(r),{fmt,pv,risk,e,side}=P,dol=v=>pv?usd(Math.abs(v*pv)):"";
     const order=String(r.order_type||(side==="long"?"buy stop":"sell stop"));
@@ -1192,6 +1259,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
       <div class="tp-row entry"><div class="tp-k">ENTER<small>${esc(order)}</small></div><div class="tp-p"${e==null&&r.entry&&r.entry!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${e==null&&r.entry&&r.entry!=="–"?"price set when the trigger candle forms":fmt(e)}</div><div class="tp-d">${esc(r.entry)}</div></div>
       <div class="tp-row stop"><div class="tp-k">STOP LOSS<small>stop ${side==="long"?"sell":"buy"}</small></div><div class="tp-p"${P.s==null&&r.stop&&r.stop!=="–"?' style="font-size:.8rem;white-space:normal;color:var(--accent)"':""}>${P.s==null&&r.stop&&r.stop!=="–"?"set with the entry":fmt(P.s)}</div><div class="tp-d">${risk>0?`<b>−${risk.toFixed(2)} pts</b>${pv?` · −${dol(risk)}/contract`:""}<br>`:""}${esc(r.stop)}${msHTML(P.e,P.s,P.pv,P.qty)}</div></div>
       ${tgt(P.t1,"TAKE PROFIT 1",r.target1)}${tgt(P.t2,"TAKE PROFIT 2",r.target2)}
+      <div class="tp5wrap" style="padding:4px 12px 10px;border-top:1px solid var(--line)">${tp5Of(r,P)}</div>
       <div class="tp-foot"><span>${!have?(r.source==="pasted"?(r.entry&&r.entry!=="–"?"Claude gave the entry as a rule, not a price. Wait for that candle, then read its high and low off your chart (or send a new screenshot).":"This reading has no exact prices. Ask Claude for entry, stop and target numbers, or type them in Risk calc."):"Couldn't read exact prices from the axis. Type them in Risk calc."):P.qty>0?`Size: <b>${P.qty} contract${P.qty>1?"s":""}</b>${r.contracts>0?"":" (max your risk allows)"} · risk ${dol(risk*P.qty)}`:P.qty===0?'<span style="color:var(--down)">Stop is too wide for your max risk. Skip or tighten.</span>':""}</span>
         <span class="row"><button type="button" class="sm" id="copyPlan">${icon("copy")}Copy plan</button><button type="button" class="sm" id="planRisk">${icon("calc")}Open in Risk calc</button></span></div>
     </div>`;
@@ -1621,6 +1689,7 @@ ${text.slice(0,20000)}
     if(mode==="connecting"){say("Still connecting. Try again in a few seconds.","err");return}
     const tfx=window.stratPickTF?stratPickTF(t):null;if(tfx&&stratApplyTF($("tf"),tfx))ftfc();  /* shared TF extractor: set the Timeframe first, even if the rest can't be read */
     const local=localParse(t),canDeep=canAsk()&&$("deepRead").checked;
+    const tpAll=window.stratTargets?stratTargets(t):[];if(local)local.tp_all=tpAll;  /* up to 5 targets named in the paste */
     if(local){if(tfx)local.chart_timeframe=tfx;else{delete local.chart_timeframe;delete local.timeframe}}  /* same TF as Strat Command and Trade Risk Check */
     if(window.PUX&&PUX.nonTrade(t)){say(PUX.NONTRADE+" Nothing was filled in.","err");pasteFail();PUX.report(t,null);return}
     {const P0=local?plan(local):null;window.PUX&&PUX.report(t,{entry:!!(P0&&P0.e!=null),stop:!!(P0&&P0.s!=null),target:!!(P0&&P0.t1!=null)})}
@@ -1634,7 +1703,7 @@ ${text.slice(0,20000)}
     try{
       const r=await askJSONText(deepPrompt(t),ctl.signal,({text})=>{const s=$("stream");if(s)s.textContent=text});
       if(!r||typeof r!=="object")throw{code:"invalid_json"};
-      finish(normalize(r),"Deep read done. Check the Second look notes, then confirm levels on your live chart.");
+      finish((x=>{if(x&&!x.tp_all)x.tp_all=tpAll;return x})(normalize(r)),"Deep read done. Check the Second look notes, then confirm levels on your live chart.");
     }catch(e){
       if(e?.name==="AbortError")e={code:"cancelled"};
       if(local)finish(local,(e?.code==="cancelled"?"Deep read stopped.":"Deep read didn't finish.")+" Showing what I could read straight from the text.");
