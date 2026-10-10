@@ -308,7 +308,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
         <div class="ladder" id="ladder"></div>
       </div>
 
-      <div class="panel" id="tp5Panel"><div id="tp5" aria-live="polite"></div></div>
+      <div class="panel" id="tp5Panel"><div id="tp5" aria-live="polite"></div><div data-rsref></div></div>
 
       <section class="panel ai" id="aiPanel" aria-labelledby="aiTitle">
         <div class="label" id="aiTitle">Analyze before you trade</div>
@@ -417,7 +417,7 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
 })(typeof window!=="undefined"?window:globalThis);
 </script>
 <script id="strat-rules">
-/* STRAT-RULES shared v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
+/* STRAT-RULES shared v2 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
    Established Strat practice turned into pass / warn / fail checks. Uses only data the app already has
    (Claude's pasted read, the user's own levels and settings). Never creates entries, stops or targets. */
 (function(g){
@@ -482,6 +482,13 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     else if(setup&&/^(none|no setup|n\/a|-|—)/i.test(setup))add("signal","bad","No actionable Strat signal. No setup, no trade.");
     else if(lastT==="1")add("signal","ok","Inside bar (1) ready to trigger.");
     else if(setup)add("signal","meh","Setup \""+setup.slice(0,40)+"\" isn't a standard Strat signal (2-1-2, 3-1-2, 2-2, 1-2-2, 3-2-2).");
+    // 4b. Rob Smith: the named setup must match the labeled candles, and its direction must match the trade
+    var sl=setup.toLowerCase(),both=/bear|short|shoot/.test(sl)&&/bull|long|hammer/.test(sl),sd=both?null:/bear|short|\bdown\b|shooter|shooting/.test(sl)?"short":/bull|long|\bup\b|hammer/.test(sl)?"long":null;
+    if(dir&&sd&&sd!==dir)add("rs_dir","bad","Rob Smith rule: the setup is "+(sd==="long"?"bullish":"bearish")+" but this plan is "+dir+". Trade the side the signal triggers.");
+    var pm=setup.match(/\b([123])(?:u|d)?-([123])(?:u|d)?(?:-([123])(?:u|d)?)?\b/i);
+    if(pm&&seq.length>=2){var pat=[pm[1],pm[2]].concat(pm[3]?[pm[3]]:[]),sq=seq.map(function(x){return String(x).charAt(0)}),tail=function(n){return sq.slice(-n).join("-")};
+      if(tail(pat.length)===pat.join("-")||tail(pat.length-1)===pat.slice(0,-1).join("-"))add("rs_seq","ok","Rob Smith rule: candles ("+seq.slice(-3).join("-")+") match the "+pat.join("-")+" setup.");
+      else add("rs_seq","meh","Rob Smith rule: the "+pat.join("-")+" name doesn't match the candles ("+seq.slice(-3).join("-")+"). Re-label each bar 1, 2 or 3.")}
     // 5. at a level / location
     var lv=c.levels||[],loc=String(c.location||"");
     if(dir&&R){var own=lv.filter(function(x){return x.kind===(long?"support":"resistance")&&(long?(x.price>=s-R&&x.price<=e+0.5*R):(x.price<=s+R&&x.price>=e-0.5*R))});
@@ -501,13 +508,18 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     if(dir&&R&&lp!=null&&e!=null){var run=sg*(lp-e)/R;
       if(tg.length&&sg*(lp-tg[0])>=0)add("late","bad","Price ("+fmt(lp)+") is already at Target 1. Too late to enter.");
       else if(run>0.5)add("late","meh","Price already ran "+run.toFixed(1)+"R past the entry. Don't chase.")}
+    // 6b. Rob Smith: in force only once the trigger breaks
+    if(dir&&e!=null&&lp!=null&&!(R&&sg*(lp-e)/R>0.5)){if(sg*(lp-e)>=0)add("rs_force","ok","Rob Smith rule: in force (price has broken the "+fmt(e)+" trigger).");
+      else add("rs_force","ok","Rob Smith rule: not in force yet. Only a stop order at "+fmt(e)+"; no entry until it breaks.")}
     // 7. magnitude
     if(dir&&R&&tg.length){var t1=tg[0],rr=sg*(t1-e)/R;
       if(rr>=minRR-1e-9)add("rr","ok","Room to Target 1 is "+rr.toFixed(1)+"R (needs "+minRR+"R).");
       else add("rr","bad","Target 1 is only "+rr.toFixed(1)+"R away. Strat magnitude needs at least "+minRR+"R.");
       var opp=lv.filter(function(x){return x.kind===(long?"resistance":"support")});
       var near=opp.filter(function(x){return Math.abs(x.price-t1)<=Math.max(4*tick,0.15*R)});
-      if(near.length||/swing|prior|previous|high|low|pdh|pdl|pwh|pwl|level|resist|support|gap/i.test(String(c.target1Text||"")))add("target","ok","Target 1 is at a real prior high/low or level.");
+      var bh=(ctx.bars||[]).slice(0,-1).filter(function(b){var v=NUM(long?b.h:b.l);return v!=null&&sg*(v-e)>0&&Math.abs(v-t1)<=Math.max(2*tick,0.05*R)});
+      if(bh.length&&!near.length)add("target","ok","Rob Smith rule: Target 1 is a prior candle "+(long?"high":"low")+" (magnitude).");
+      else if(near.length||/swing|prior|previous|high|low|pdh|pdl|pwh|pwl|level|resist|support|gap/i.test(String(c.target1Text||"")))add("target","ok","Target 1 is at a real prior high/low or level.");
       else if(opp.length||c.target1Text)add("target","meh","Target 1 isn't at a marked prior high/low. Check the chart for the real magnitude level.");
       // 8. resistance before the target (PDH/PDL/PWH/PWL)
       var block=opp.filter(function(x){return sg*(x.price-e)>tick/2&&sg*(t1-x.price)>Math.max(4*tick,0.15*R)}).sort(function(a,b){return sg*(a.price-b.price)});
@@ -533,7 +545,22 @@ input.flash,select.flash{animation:flashfill 1.6s ease-out}
     var verdict=fails.length?{c:"bad",t:"NO TRADE — SETUP DOES NOT MEET THE RULES.",why:fails[0].t}:warns.length?{c:"meh",t:"CAUTION — "+warns.length+" rule"+(warns.length>1?"s":"")+" to check before you enter.",why:warns[0].t}:items.length?{c:"ok",t:"All Strat rules pass.",why:""}:{c:"meh",t:"Not enough data for the Strat rules yet.",why:""};
     return {items:items,fails:fails.length,warns:warns.length,verdict:verdict};
   }
-  g.stratReadClaude=readClaude;g.stratRules=rules;
+  /* Rob Smith's Strat rules, paraphrased (sources: TheStrat docs thestrat.ai; StratAlerts guide) */
+  var RS=[["Every candle is a 1, 2 or 3","1 = inside bar (inside the prior candle). 2U / 2D = takes out one side. 3 = outside bar (takes out both). Label them; don't guess."],
+    ["Trade with the timeframes","Price moves the way most timeframes are 2s. Want full timeframe continuity: Month, Week, Day and 60 all on the same side of their opens. Don't fight the timeframes. A 3 has no direction."],
+    ["Who has control","The Day and 60 can override the Month and Week for control today. Mixed continuity is conflict: size down or wait."],
+    ["Broadening formations","Price finds value by broadening: higher highs and lower lows. Every 3 is a broadening formation on the lower timeframe, and its sides are targets."],
+    ["Only actionable signals","Inside bar (2-1-2, 3-1-2), 2-2 and 3-2-2 reversals, 1-2-2 RevStrat, hammer and shooter. No signal, no trade."],
+    ["Trigger and in force","Trigger = setup candle high (long) or low (short). Nothing counts until it breaks. Enter on the break with a stop order, never early."],
+    ["Stop","Other side of the trigger candle. Hammer / shooter: just past the entry bar, not the wick."],
+    ["Target (magnitude)","The high or low of the prior candle you reverse through, or a broadening-formation level. Continuations: measured move."]];
+  function rsHTML(){return '<details class="rsref"><summary>Strat rules (Rob Smith)</summary><ol>'+RS.map(function(r){return "<li><b>"+r[0]+".</b> "+r[1]+"</li>"}).join("")+'</ol><p class="rsref-s">Paraphrased from TheStrat (Rob Smith) teaching. The app checks these where it has the data.</p></details>'}
+  if(typeof document!=="undefined"&&!document.getElementById("rsref-css")){var st=document.createElement("style");st.id="rsref-css";
+    st.textContent='.rsref{margin:10px 0;border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:6px 10px;font-size:13px;line-height:1.45}.rsref summary{cursor:pointer;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:4px 0;min-height:28px;display:list-item}'+
+    '.rsref ol{margin:6px 0 4px;padding-left:20px}.rsref li{margin:4px 0}.rsref-s{margin:4px 0 2px;font-size:11px;opacity:.7}';(document.head||document.documentElement).appendChild(st)}
+  function rsMount(){if(typeof document==="undefined")return;var els=document.querySelectorAll("[data-rsref]");for(var i=0;i<els.length;i++)if(!els[i].firstChild)els[i].innerHTML=rsHTML()}
+  if(typeof document!=="undefined"){if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",rsMount);else setTimeout(rsMount,0)}
+  g.stratReadClaude=readClaude;g.stratRules=rules;g.stratRobSmithHTML=rsHTML;
 })(typeof window!=="undefined"?window:globalThis);
 </script>
 <script id="strat-tf">
