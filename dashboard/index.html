@@ -1,0 +1,457 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Strat Dashboard</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1428;--panel:#111d38;--line:#2a3b62;--muted:#a9b4cc;--txt:#e8ecf6}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+main{max-width:980px;margin:0 auto;padding:18px 14px 40px}h1{margin:0;font-size:26px}.sub{color:var(--muted);margin:2px 0 14px;font-size:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0}
+textarea{width:100%;min-height:140px;border-radius:8px;border:1px solid var(--line);background:#0a1224;color:inherit;font:14px/1.4 ui-monospace,Consolas,monospace;padding:10px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px}label{font-size:13px;color:var(--muted);display:block}
+select,input{width:100%;min-height:40px;margin-top:3px;border-radius:8px;border:1px solid var(--line);background:#0a1224;color:inherit;font:inherit;padding:6px 8px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.btns button{min-height:40px;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:#1a2a50;color:inherit;font:inherit;cursor:pointer}
+.how{font-size:14px;color:var(--muted)}.how ol{margin:4px 0;padding-left:20px}#size{margin:8px 0 0;font-size:15px}
+.sc-sec{border-top:1px solid var(--line);padding:8px 0}.sc-sec summary{cursor:pointer;font-size:16px;min-height:32px}
+footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
+</style>
+<!-- installable web app --><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b1428"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="icon" type="image/png" sizes="512x512" href="icon-512.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Strat Dash"><script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(e){console.warn("SW registration failed",e)})})}</script>
+</head><body><main>
+<h1>Strat Dashboard</h1><p class="sub">One paste → one trade card. Same engine as Strat Chart Reader, Trade Risk Check and Strat Command.</p>
+<section class="panel"><div class="how"><b>How to use:</b><ol><li>In Strat Chart Reader, tap <b>Copy Strat prompt</b>, paste it into Claude with your chart screenshot.</li><li>Paste Claude's whole answer below (or tap <b>Use it here</b> when another app offers its last analysis).</li><li>Read the card. The apps can't see your chart: prices come only from the analysis or your inputs.</li></ol></div>
+<textarea id="dIn" placeholder="Paste Claude's analysis here…"></textarea>
+<div class="row"><label>Instrument (used if the analysis doesn't name one)<select id="dInst"><option>MNQ</option><option>MES</option><option>NQ</option><option>ES</option><option>MGC</option><option>GC</option><option>M2K</option><option>MYM</option></select></label>
+<label>Contracts you plan<input id="dQty" type="number" min="1" step="1" inputmode="numeric" placeholder="Auto (max for risk)"></label>
+<label>Max risk per trade ($)<input id="dRisk" type="number" min="1" step="5" value="200" inputmode="decimal"></label></div>
+<p id="size" aria-live="polite"></p>
+<div class="btns"><button type="button" id="dClear">Clear</button><button type="button" id="dLast">Load last analysis</button></div></section>
+<section id="dCard" aria-live="polite"></section>
+<footer>For review only — no live data, no orders placed.</footer>
+</main>
+<script id="strat-tf">
+/* STRAT-TF shared extractor v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check) */
+(function(g){
+  var SYM="MNQ|MES|MYM|M2K|MGC|MCL|MHG|MNG|MBT|MET|M6E|M6B|SIL|NQ|ES|YM|RTY|GC|SI|HG|CL|NG|QO|QI|QM|QG|6E|6B|SPY|QQQ|nasdaq|s&p|gold|crude|futures";
+  function canon(raw){
+    if(raw==null)return null;
+    var s=String(raw).toLowerCase().replace(/[*_`"'()\[\]]/g," ").replace(/\s+/g," ").trim();
+    s=s.replace(/\s*(chart|candles?|bars?|timeframe|tf|time frame)$/," ").trim();
+    var m,n;
+    if((m=s.match(/^(\d{1,3})\s*-?\s*(?:m|mins?|minutes?)$/))||(m=s.match(/^m\s?(\d{1,3})$/))||(m=s.match(/^(\d{1,3})$/))){n=+m[1];
+      return n===1?"1m":n===5?"5m":n===15?"15m":n===30?"30m":n===60?"1h":n===240?"4h":null}
+    if((m=s.match(/^(\d)\s*-?\s*(?:h|hrs?|hours?)$/))||(m=s.match(/^h\s?(\d)$/))){n=+m[1];return n===1?"1h":n===4?"4h":null}
+    if(/^(one|1)[ -]?hour$|^hourly$|^hour$/.test(s))return"1h";
+    if(/^(four|4)[ -]?hour$/.test(s))return"4h";
+    if(/^(daily|day|d|1d|1 day)$/.test(s))return"Daily";
+    if(/^(weekly|week|w|1w|1 week)$/.test(s))return"Weekly";
+    return null;
+  }
+  // explicit timeframe tokens (no bare numbers)
+  var TOK="(?:\\b(?:1|5|15|30|60|240)\\s*-?\\s*(?:m|mins?|minutes?)\\b|\\bm\\s?(?:1|5|15|30|60)\\b|\\b[14]\\s*-?\\s*(?:h|hrs?|hours?)\\b|\\bh[14]\\b|\\b(?:one|four)[ -]hour\\b|\\bhourly\\b|\\bdaily\\b|\\bweekly\\b)";
+  var COMPACT="(?:\\b(?:1|5|15|30|60|240)\\s?(?:m|min)\\b|\\bm(?:1|5|15|30|60)\\b|\\b[14]h\\b|\\bh[14]\\b)";
+  var COLOR="(?:green|red|bullish|bearish|up|down|unknown|not checked|unchecked|mixed|neutral|\\?)";
+  function first(str,re){var m=String(str||"").match(new RegExp(re,"i"));return m?canon(m[0]):null}
+  function stripCont(s){
+    var tf=TOK.replace(/^\(\?:/,"(?:");
+    return s.replace(new RegExp(tf+"\\s*(?:candle|bar|tf)?\\s*(?:[:=(\\-–—]|is|are|=)?\\s*"+COLOR+"\\b","gi")," ")
+            .replace(new RegExp("\\b(?:green|red|bullish|bearish)\\s+(?:on\\s+)?(?:the\\s+)?"+tf,"gi")," ")
+            .replace(new RegExp("\\bthe\\s+"+tf+"\\s+(?:candle\\s+)?(?:is|looks|stays|remains|closed|turned)\\s+(?:still\\s+)?"+COLOR+"\\b","gi")," ");
+  }
+  function pick(text){
+    var t=String(text==null?"":text).replace(/\r/g,"");
+    if(!t.trim())return null;
+    var m,v;
+    // 1) JSON keys from the app prompts
+    var keys=["chart_timeframe","entry_timeframe","setup_timeframe","timeframe","tf"];
+    for(var i=0;i<keys.length;i++){
+      var re=new RegExp('"'+keys[i]+'"\\s*:\\s*("([^"]*)"|(\\d{1,3}))',"i");
+      if((m=t.match(re))){v=canon(m[2]!=null?m[2]:m[3]);if(v)return v}
+    }
+    // plain lines without markdown
+    var lines=t.split("\n").map(function(l){return l.replace(/[*_`>]+/g,"").replace(/^\s*(?:#+|[-•–·]|\d+[.)])\s*/,"").replace(/\s+/g," ").trim()}).filter(Boolean);
+    var isCont=function(l){return /^(?:full\s+)?(?:timeframe\s+continuity|time\s*frame\s+continuity|continuity|higher\s+time\s*frames?|htfs?|ftfc|"ftfc"|"continuity")\b/i.test(l)};
+    // 2) labeled lines: "Symbol and timeframe you see: ...", "Timeframe: 5m", "Chart: 15-minute"
+    var LAB=/^(?:symbol\s*(?:and|&|\/|,)?\s*time\s*frames?(?:\s+you\s+see)?|time\s*frame\s+you\s+see|time\s*frame\s+of\s+the\s+(?:screenshot|chart)|(?:chart|entry|setup|execution|trading|trigger)\s+time\s*frame|time\s*frame|tf|chart|instrument\s*(?:and|&|\/)\s*time\s*frame|symbol\s*\/\s*tf)\b\s*(?:\([^)]*\))?\s*[:\-–—]?\s*(.*)$/i;
+    for(var k=0;k<lines.length;k++){
+      var l=lines[k];if(isCont(l))continue;
+      if((m=l.match(LAB))){
+        var val=m[1];
+        if(!val||!val.replace(/[\s:–—-]/g,"")){var nx=lines[k+1];if(nx&&!LAB.test(nx)&&!/^(market|price|bullish|bearish|good|bad|verdict|setup|entry|stop|targets?|candle)\b/i.test(nx))val=nx;else continue}
+        val=stripCont(val);
+        v=first(val,TOK);
+        if(!v){ // TradingView style "MNQ1! · 15 · CME" or "MNQ, 15"
+          var vv=val.replace(new RegExp("\\b(?:"+SYM+")[A-Z]?\\d{0,4}!?","gi")," ").replace(/\d[\d,]*\.\d+|\d{1,3}(?:,\d{3})+|\d{4,}/g," ");
+          var bm=vv.match(/(?:^|[\s,·|\/:–—-])(1|5|15|30|60|240|D|W)(?=$|[\s,·|\/)])/i);if(bm)v=canon(bm[1]);
+        }
+        if(v)return v;
+      }
+    }
+    // text with continuity lines removed and continuity phrases stripped
+    var body=stripCont(lines.filter(function(l){return !isCont(l)}).join("\n"));
+    // 3) symbol followed closely by a timeframe ("## MNQ – 15m", "MES hourly chart", "MNQ 15-Minute Chart")
+    if((m=body.match(new RegExp("(?:^|[^A-Za-z0-9])(?:"+SYM+")[A-Z]?\\d{0,4}!?[^\\n]{0,25}?("+TOK+")(?!\\s+(?:after|before|ago|into|of|from|later|until|left|past|in|to|or|and)\\b)","i")))&&(v=canon(m[1])))return v;
+    // 4) entry/setup chart cues ("on the 15m chart", "5m entry", "this 5-minute chart")
+    var CUE=[
+      "\\b(?:on|trade|trading|entry\\s+on|setup\\s+on|trigger\\s+on|using|looking\\s+at|this|your)\\s+(?:the\\s+|this\\s+|your\\s+)?("+TOK+")",
+      "("+TOK+")\\s+(?:entry|setup|trigger|execution|chart|candles?|bars?|time\\s*frame|tf)\\b",
+      "\\bthe\\s+("+TOK+")\\s+(?:is\\s+)?(?:forming|printing|printed|shows|showing|has|just)\\b"];
+    for(var c=0;c<CUE.length;c++){
+      var re2=new RegExp(CUE[c],"gi"),mm,daily=null;
+      while((mm=re2.exec(body))){v=canon(mm[1]);if(!v)continue;if(v==="Daily"||v==="Weekly"){if(!daily)daily=v;continue}return v}
+      if(daily)return daily;
+    }
+    // 5) last resort: compact token in the first 3 lines
+    v=first(lines.slice(0,3).filter(function(l){return !isCont(l)}).map(stripCont).join(" "),COMPACT);
+    return v||null;
+  }
+  g.stratPickTF=pick;g.stratCanonTF=canon;
+})(typeof window!=="undefined"?window:globalThis);
+/* set a Timeframe <select> from a pasted analysis; returns the value set, or null when nothing changed */
+(function(g){
+  g.stratApplyTF=function(sel,tf){
+    if(!sel||!tf)return null;
+    var o=[].slice.call(sel.options).find(function(x){return x.value&&x.value.toLowerCase()===String(tf).toLowerCase()});
+    if(!o||sel.value===o.value)return null;
+    sel.value=o.value;
+    try{sel.dispatchEvent(new Event("change",{bubbles:true}))}catch(e){}
+    try{sel.animate([{boxShadow:"0 0 0 4px #f5b301"},{boxShadow:"0 0 0 0 transparent"}],{duration:1600,easing:"ease-out"})}catch(e){}
+    return o.value;
+  };
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="strat-rules">
+/* STRAT-RULES shared v2 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
+   Established Strat practice turned into pass / warn / fail checks. Uses only data the app already has
+   (Claude's pasted read, the user's own levels and settings). Never creates entries, stops or targets. */
+(function(g){
+  var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)?n:null};
+  var fmt=function(v){return v==null?"–":(+v).toLocaleString("en-US",{maximumFractionDigits:2})};
+  /* read the parts of a Claude answer the rules need: JSON block first, then the plain-text headings */
+  function readClaude(text){
+    var t=String(text==null?"":text).replace(/\r/g,"").replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'");
+    var c={};if(!t.trim())return c;
+    var at=t.indexOf('"entry_price"');if(at<0)at=t.indexOf('"verdict"');
+    if(at>=0){for(var st=t.lastIndexOf("{",at),k=0;st>=0&&k<25;st=t.lastIndexOf("{",st-1),k++){var d=0,done=false;
+      for(var i=st;i<t.length;i++){var ch=t[i];if(ch==="{")d++;else if(ch==="}"){d--;if(!d){try{var o=JSON.parse(t.slice(st,i+1));if(o&&typeof o==="object"&&("verdict" in o||"entry_price" in o)){c.json=o;done=true}}catch(e){}break}}}if(done)break}}
+    var j=c.json||{};
+    var v=String(j.verdict||"").toLowerCase();
+    var lines=t.split("\n").map(function(l){return l.replace(/[*_`>#]+/g,"").replace(/^\s*[-•]\s*/,"").trim()}).filter(Boolean);
+    var after=function(re){for(var i=0;i<lines.length;i++){var m=lines[i].match(re);if(m){var rest=lines[i].slice(m[0].length).replace(/^[\s:–—-]+/,"");if(!rest&&lines[i+1])rest=lines[i+1];return rest}}return null};
+    if(!v){var vl=after(/^(?:final\s+)?verdict\b(?:\s*\([^)]*\))?/i);if(vl){vl=vl.toLowerCase();v=/no[\s-]?trade|skip|stand aside|pass\b/.test(vl)?"no trade":/\bwait\b|not yet|not triggered/.test(vl)?"wait":/\btrade\b|\btake\b|\bgo\b|\benter\b/.test(vl)?"trade":""}}
+    if(v)c.verdict=/no/.test(v)?"no trade":/wait/.test(v)?"wait":/trade/.test(v)?"trade":null;
+    c.setup=j.setup!=null?String(j.setup):after(/^(?:setup|pattern)\b/i);
+    c.sequence=Array.isArray(j.sequence)?j.sequence.map(String):(function(){var s=after(/^(?:candle\s+labels?|strat\s+labels?|candles?|sequence)\b/i);return s?(s.match(/\b(?:1|2U|2D|3)\b/gi)||[]).map(function(x){return x.toUpperCase()}):null})();
+    c.orderType=j.order_type||null;c.entryText=j.entry!=null?String(j.entry):after(/^(?:entry|enter)\b/i);
+    c.stopText=j.stop!=null?String(j.stop):after(/^stop(?:\s*loss)?\b/i);c.target1Text=j.target1!=null?String(j.target1):after(/^(?:target\s*1|targets?|take\s*profit)\b/i);
+    c.lastPrice=NUM(j.last_price);c.side=j.side||null;
+    var ms=j.market_structure||{},ps=j.price_structure||{};
+    c.trend=ms.trend||(/broaden|megaphone/i.test(t)?"broadening":null);
+    c.location=ps.location||((t.match(/\b(at support|at resistance|mid-range|breaking out|breaking down)\b/i)||[])[1]||"").toLowerCase()||null;
+    c.condition=j.market_condition||null;
+    var lv=[];(Array.isArray(ps.levels)?ps.levels:[]).forEach(function(x){var p=NUM(x&&x.price);if(p!=null)lv.push({price:p,kind:/res/i.test(x.kind)?"resistance":"support",label:String(x.label||x.kind||""),strength:x.strength||""})});
+    if(!lv.length)lines.forEach(function(l){var kind=/resist|supply|\bpdh\b|\bpwh\b|prior (day|week) high/i.test(l)?"resistance":/support|demand|\bpdl\b|\bpwl\b|prior (day|week) low/i.test(l)?"support":null;if(!kind||/^(entry|stop|target)/i.test(l))return;
+      var lab=(l.match(/\(([^)]{2,30})\)/)||[])[1]||"";(l.replace(/\([^)]*\)/g," ").match(/\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d{3,6}(?:\.\d{1,2})?\b/g)||[]).slice(0,4).forEach(function(p){lv.push({price:NUM(p),kind:kind,label:lab||kind,strength:/strong|major|key/i.test(l)?"strong":""})})});
+    c.levels=lv;
+    var ft=j.ftfc!=null?(typeof j.ftfc==="string"?j.ftfc:JSON.stringify(j.ftfc)):after(/^(?:full\s+)?time\s*frame\s+continuity\b|^ftfc\b|^higher\s+time\s*frames?\b/i);
+    if(ft){var gN=0,rN=0,re=/\b(monthly|weekly|daily|4\s?h|h4|1\s?h|h1|60|hourly|quarterly|month|week|day|M|W|D)\b["']?\s*[:=(\-–]?\s*["']?(green|red|bullish|bearish|up|down)\b/gi,m2;while((m2=re.exec(ft))){if(/green|bull|up/i.test(m2[2]))gN++;else rN++}
+      if(!gN&&!rN){if(/(all|full)[^.]{0,30}(green|bullish|up)/i.test(ft))gN=3;else if(/(all|full)[^.]{0,30}(red|bearish|down)/i.test(ft))rN=3}
+      c.ftfc={g:gN,r:rN,known:gN+rN,text:ft}}
+    return c;
+  }
+  var SIG=/\b(?:[123x]-1-2|2u?d?-2u?d?|1-2-2|3-2-2|2-2|rev\s*strat|inside\s*bar|hammer|shooter|shooting\s*star|1-3|3-1|1-1)\b/i;
+  /* ctx: {dir, entry, stop, targets[], pv, tick, qty, maxRisk, maxStopPts, minRR, ftfc:{g,r,known}, trigger:{h,l}, claude:readClaude(), chop, setupBarType, lastPrice, hide:[]} */
+  function rules(ctx){
+    var c=ctx.claude||{},items=[],add=function(id,k,t){items.push({id:id,c:k,t:t,hide:(ctx.hide||[]).indexOf(id)>=0})};
+    var e=NUM(ctx.entry),s=NUM(ctx.stop),tg=(ctx.targets||[]).map(NUM).filter(function(x){return x!=null});
+    var dir=ctx.dir||(e!=null&&s!=null?(s<e?"long":"short"):null),sg=dir==="short"?-1:1,long=dir!=="short";
+    var R=(e!=null&&s!=null)?Math.abs(e-s):null,tick=NUM(ctx.tick)||0.25,minRR=NUM(ctx.minRR)||2,maxPts=NUM(ctx.maxStopPts)||25,maxRisk=NUM(ctx.maxRisk)||200;
+    // 1. Claude's call
+    if(c.verdict==="no trade")add("call","bad","Claude says NO TRADE. Don't take it.");
+    else if(c.verdict==="wait")add("call","bad","Claude says WAIT: not a trade until the trigger breaks and the read says trade.");
+    else if(c.verdict==="trade")add("call","ok","Claude's call is trade.");
+    // 2. complete plan
+    var miss=[];if(e==null)miss.push("entry");if(s==null)miss.push("stop");if(!tg.length)miss.push("target");
+    if(miss.length)add("plan","bad","Missing "+miss.join(", ")+": never trade without a defined entry, stop, target and size.");
+    // 3. continuity
+    var f=ctx.ftfc&&ctx.ftfc.known?ctx.ftfc:(c.ftfc&&c.ftfc.known?c.ftfc:null);
+    if(dir&&f){var agree=long?f.g:f.r,against=long?f.r:f.g;
+      if(against&&!agree)add("ftfc","bad","Against timeframe continuity: "+against+" of "+f.known+" higher timeframes are "+(long?"red":"green")+".");
+      else if(against)add("ftfc","meh","Continuity is mixed ("+f.g+" green / "+f.r+" red). Size down or wait for full continuity.");
+      else add("ftfc","ok","Full timeframe continuity agrees ("+agree+" of "+f.known+" "+(long?"green":"red")+").")}
+    else if(dir)add("ftfc","meh","Timeframe continuity not confirmed. Check the higher timeframes first.");
+    // 4. actionable signal
+    var setup=String(c.setup||ctx.setup||"").trim(),seq=c.sequence||ctx.sequence||[],lastT=seq.length?String(seq[seq.length-1]).toUpperCase():null;
+    if(setup&&SIG.test(setup))add("signal","ok","Actionable Strat signal: "+setup.replace(/\.$/,"").slice(0,60)+".");
+    else if(setup&&/^(none|no setup|n\/a|-|—)/i.test(setup))add("signal","bad","No actionable Strat signal. No setup, no trade.");
+    else if(lastT==="1")add("signal","ok","Inside bar (1) ready to trigger.");
+    else if(setup)add("signal","meh","Setup \""+setup.slice(0,40)+"\" isn't a standard Strat signal (2-1-2, 3-1-2, 2-2, 1-2-2, 3-2-2).");
+    // 4b. Rob Smith: the named setup must match the labeled candles, and its direction must match the trade
+    var sl=setup.toLowerCase(),both=/bear|short|shoot/.test(sl)&&/bull|long|hammer/.test(sl),sd=both?null:/bear|short|\bdown\b|shooter|shooting/.test(sl)?"short":/bull|long|\bup\b|hammer/.test(sl)?"long":null;
+    if(dir&&sd&&sd!==dir)add("rs_dir","bad","Rob Smith rule: the setup is "+(sd==="long"?"bullish":"bearish")+" but this plan is "+dir+". Trade the side the signal triggers.");
+    var pm=setup.match(/\b([123])(?:u|d)?-([123])(?:u|d)?(?:-([123])(?:u|d)?)?\b/i);
+    if(pm&&seq.length>=2){var pat=[pm[1],pm[2]].concat(pm[3]?[pm[3]]:[]),sq=seq.map(function(x){return String(x).charAt(0)}),tail=function(n){return sq.slice(-n).join("-")};
+      if(tail(pat.length)===pat.join("-")||tail(pat.length-1)===pat.slice(0,-1).join("-"))add("rs_seq","ok","Rob Smith rule: candles ("+seq.slice(-3).join("-")+") match the "+pat.join("-")+" setup.");
+      else add("rs_seq","meh","Rob Smith rule: the "+pat.join("-")+" name doesn't match the candles ("+seq.slice(-3).join("-")+"). Re-label each bar 1, 2 or 3.")}
+    // 5. at a level / location
+    var lv=c.levels||[],loc=String(c.location||"");
+    if(dir&&R){var own=lv.filter(function(x){return x.kind===(long?"support":"resistance")&&(long?(x.price>=s-R&&x.price<=e+0.5*R):(x.price<=s+R&&x.price>=e-0.5*R))});
+      if((long&&/at support|breaking out/.test(loc))||(!long&&/at resistance|breaking down/.test(loc))||own.length)add("level","ok","Setup sits at a level"+(own.length?" ("+own[0].label.slice(0,24)+" "+fmt(own[0].price)+")":" ("+loc+")")+".");
+      else if(/mid-range/.test(loc))add("level","meh","Price is mid-range. Strat signals work best at a level, not in the middle.");
+      else if(lv.length)add("level","bad","No key level behind the setup. No level, no trade.");
+      else add("level","meh","No key levels in the read. Confirm the setup is at a level.")}
+    // 6. trigger actually broken / not anticipating
+    var T=ctx.trigger;if(dir&&e!=null&&T&&NUM(T.h)!=null&&NUM(T.l)!=null){var th=NUM(T.h),tl=NUM(T.l);
+      if(long?e>=th-1e-9:e<=tl+1e-9)add("trigger","ok","Entry is a break of the trigger bar "+(long?"high ("+fmt(th)+")":"low ("+fmt(tl)+")")+".");
+      else add("trigger","bad","Entry "+fmt(e)+" is inside the trigger bar ("+fmt(tl)+"–"+fmt(th)+"). That's anticipating. Wait for the break.")}
+    else if(dir&&(c.orderType||c.entryText)){var ot=String(c.orderType||"")+" "+String(c.entryText||"");
+      if(/limit/i.test(ot))add("trigger","meh","Limit entry anticipates the move. Strat entries are stop orders through the trigger bar.");
+      else if(/market|now|current price/i.test(ot)&&!/stop/i.test(ot))add("trigger","meh","Market entry: make sure the trigger bar has actually broken.");
+      else if(/stop|break|above|below|1 tick/i.test(ot))add("trigger","ok","Entry is a stop order through the trigger bar (no anticipating).")}
+    var lp=NUM(ctx.lastPrice!=null?ctx.lastPrice:c.lastPrice);
+    if(dir&&R&&lp!=null&&e!=null){var run=sg*(lp-e)/R;
+      if(tg.length&&sg*(lp-tg[0])>=0)add("late","bad","Price ("+fmt(lp)+") is already at Target 1. Too late to enter.");
+      else if(run>0.5)add("late","meh","Price already ran "+run.toFixed(1)+"R past the entry. Don't chase.")}
+    // 6b. Rob Smith: in force only once the trigger breaks
+    if(dir&&e!=null&&lp!=null&&!(R&&sg*(lp-e)/R>0.5)){if(sg*(lp-e)>=0)add("rs_force","ok","Rob Smith rule: in force (price has broken the "+fmt(e)+" trigger).");
+      else add("rs_force","ok","Rob Smith rule: not in force yet. Only a stop order at "+fmt(e)+"; no entry until it breaks.")}
+    // 7. magnitude
+    if(dir&&R&&tg.length){var t1=tg[0],rr=sg*(t1-e)/R;
+      if(rr>=minRR-1e-9)add("rr","ok","Room to Target 1 is "+rr.toFixed(1)+"R (needs "+minRR+"R).");
+      else add("rr","bad","Target 1 is only "+rr.toFixed(1)+"R away. Strat magnitude needs at least "+minRR+"R.");
+      var opp=lv.filter(function(x){return x.kind===(long?"resistance":"support")});
+      var near=opp.filter(function(x){return Math.abs(x.price-t1)<=Math.max(4*tick,0.15*R)});
+      var bh=(ctx.bars||[]).slice(0,-1).filter(function(b){var v=NUM(long?b.h:b.l);return v!=null&&sg*(v-e)>0&&Math.abs(v-t1)<=Math.max(2*tick,0.05*R)});
+      if(bh.length&&!near.length)add("target","ok","Rob Smith rule: Target 1 is a prior candle "+(long?"high":"low")+" (magnitude).");
+      else if(near.length||/swing|prior|previous|high|low|pdh|pdl|pwh|pwl|level|resist|support|gap/i.test(String(c.target1Text||"")))add("target","ok","Target 1 is at a real prior high/low or level.");
+      else if(opp.length||c.target1Text)add("target","meh","Target 1 isn't at a marked prior high/low. Check the chart for the real magnitude level.");
+      // 8. resistance before the target (PDH/PDL/PWH/PWL)
+      var block=opp.filter(function(x){return sg*(x.price-e)>tick/2&&sg*(t1-x.price)>Math.max(4*tick,0.15*R)}).sort(function(a,b){return sg*(a.price-b.price)});
+      if(block.length){var b0=block[0],key=/pdh|pdl|pwh|pwl|prior\s*(day|week)|previous\s*(day|week)|day\s*(high|low)|week(ly)?\s*(high|low)/i.test(b0.label)||/strong/i.test(b0.strength)||sg*(b0.price-e)<=0.5*R;
+        add("block",key?"bad":"meh",(b0.label||b0.kind).slice(0,28)+" at "+fmt(b0.price)+" sits before Target 1. You'd be "+(long?"buying into resistance":"selling into support")+".")}}
+    // 9. stop: other side of the trigger bar, size in points and dollars
+    if(dir&&R){
+      if(T&&NUM(T.h)!=null&&NUM(T.l)!=null){var H=NUM(T.h),L=NUM(T.l),mid=(H+L)/2;
+        if(long?s<=L+1e-9:s>=H-1e-9)add("stopside","ok","Stop is on the other side of the trigger bar.");
+        else if(long?s<=mid+1e-9:s>=mid-1e-9)add("stopside","meh","Stop is inside the trigger bar (half-bar stop): tighter, easier to get stopped out.");
+        else add("stopside","bad","Stop is too close: past the middle of the trigger bar. Normal noise will stop you out.")}
+      else if(c.stopText&&/other side|below the|above the|beyond|under the|over the/i.test(c.stopText)&&/bar|candle|low|high/i.test(c.stopText))add("stopside","ok","Stop is on the other side of the trigger bar.");
+      if(R>maxPts+1e-9)add("stoppts","bad","Stop is "+fmt(R)+" pts: over your "+fmt(maxPts)+"-pt max.");
+      else add("stoppts","ok","Stop is "+fmt(R)+" pts (max "+fmt(maxPts)+").");
+      var pv=NUM(ctx.pv),q=Math.max(1,Math.floor(NUM(ctx.qty)||1));
+      if(pv){var risk=R*pv*q;if(risk>maxRisk+1e-9)add("risk","bad",q+" contract"+(q>1?"s":"")+" risk $"+risk.toFixed(0)+": over your $"+maxRisk+" limit.");else add("risk","ok","Risk $"+risk.toFixed(0)+" is within your $"+maxRisk+" limit.")}}
+    // 10. chop: outside bar / broadening / choppy
+    var three=lastT==="3"||ctx.setupBarType==="3",broad=/broaden/i.test(String(c.trend||"")),chop=ctx.chop||/chop/i.test(String(c.condition||""));
+    if(three)add("chop","meh","Trigger bar is a 3 (outside bar): wide range and chop risk. Wait for a cleaner bar.");
+    if(broad)add("chop2","meh","Broadening (megaphone) structure: chop, lower odds.");
+    if(chop&&!three)add("chop3","meh","Choppy tape. Strat signals fail more often in chop.");
+    var fails=items.filter(function(x){return x.c==="bad"}),warns=items.filter(function(x){return x.c==="meh"});
+    var verdict=fails.length?{c:"bad",t:"NO TRADE — SETUP DOES NOT MEET THE RULES.",why:fails[0].t}:warns.length?{c:"meh",t:"CAUTION — "+warns.length+" rule"+(warns.length>1?"s":"")+" to check before you enter.",why:warns[0].t}:items.length?{c:"ok",t:"All Strat rules pass.",why:""}:{c:"meh",t:"Not enough data for the Strat rules yet.",why:""};
+    return {items:items,fails:fails.length,warns:warns.length,verdict:verdict};
+  }
+  /* Rob Smith's Strat rules, paraphrased (sources: TheStrat docs thestrat.ai; StratAlerts guide) */
+  var RS=[["Every candle is a 1, 2 or 3","1 = inside bar (inside the prior candle). 2U / 2D = takes out one side. 3 = outside bar (takes out both). Label them; don't guess."],
+    ["Trade with the timeframes","Price moves the way most timeframes are 2s. Want full timeframe continuity: Month, Week, Day and 60 all on the same side of their opens. Don't fight the timeframes. A 3 has no direction."],
+    ["Who has control","The Day and 60 can override the Month and Week for control today. Mixed continuity is conflict: size down or wait."],
+    ["Broadening formations","Price finds value by broadening: higher highs and lower lows. Every 3 is a broadening formation on the lower timeframe, and its sides are targets."],
+    ["Only actionable signals","Inside bar (2-1-2, 3-1-2), 2-2 and 3-2-2 reversals, 1-2-2 RevStrat, hammer and shooter. No signal, no trade."],
+    ["Trigger and in force","Trigger = setup candle high (long) or low (short). Nothing counts until it breaks. Enter on the break with a stop order, never early."],
+    ["Stop","Other side of the trigger candle. Hammer / shooter: just past the entry bar, not the wick."],
+    ["Target (magnitude)","The high or low of the prior candle you reverse through, or a broadening-formation level. Continuations: measured move."]];
+  function rsHTML(){return '<details class="rsref"><summary>Strat rules (Rob Smith)</summary><ol>'+RS.map(function(r){return "<li><b>"+r[0]+".</b> "+r[1]+"</li>"}).join("")+'</ol><p class="rsref-s">Paraphrased from TheStrat (Rob Smith) teaching. The app checks these where it has the data.</p></details>'}
+  if(typeof document!=="undefined"&&!document.getElementById("rsref-css")){var st=document.createElement("style");st.id="rsref-css";
+    st.textContent='.rsref{margin:10px 0;border:1px solid rgba(128,128,128,.35);border-radius:8px;padding:6px 10px;font-size:13px;line-height:1.45}.rsref summary{cursor:pointer;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:4px 0;min-height:28px;display:list-item}'+
+    '.rsref ol{margin:6px 0 4px;padding-left:20px}.rsref li{margin:4px 0}.rsref-s{margin:4px 0 2px;font-size:11px;opacity:.7}';(document.head||document.documentElement).appendChild(st)}
+  function rsMount(){if(typeof document==="undefined")return;var els=document.querySelectorAll("[data-rsref]");for(var i=0;i<els.length;i++)if(!els[i].firstChild)els[i].innerHTML=rsHTML()}
+  if(typeof document!=="undefined"){if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",rsMount);else setTimeout(rsMount,0)}
+  g.stratReadClaude=readClaude;g.stratRules=rules;g.stratRobSmithHTML=rsHTML;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="strat-tp">
+/* STRAT-TP shared v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
+   Five take-profit levels: analysis targets first, then R-multiples of the trader's own entry/stop (math only, never chart levels). */
+(function(g){
+  var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)&&n>0?n:null};
+  var PR=/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d{2,}/g;
+  var firstP=function(s){s=String(s||"").replace(/\([^)]*\b(?:R|pts?|points?|ticks?)\b[^)]*\)/gi," ").replace(/\b\d+(?:\.\d+)?\s*(?:R|pts?|points?|ticks?|contracts?|%|x)\b/gi," ").replace(/\$\s?[\d,.]+/g," ").replace(/\b(?:tp|target|t)\s*[1-5]\b/gi," ");var m=s.match(PR);if(!m)return null;for(var i=0;i<m.length;i++){var v=NUM(m[i]);if(v!=null&&v>=10)return v}return null};
+  /* up to 5 target prices named in a Claude answer (JSON first, then text) */
+  function targets(text){
+    var t=String(text==null?"":text).replace(/\r/g,"").replace(/[\u201c\u201d]/g,'"'),out=[],k,m,j;
+    var put=function(i,v){if(v!=null&&i>=0&&i<5&&out[i]==null)out[i]=v};
+    ["_price",""].forEach(function(suf){for(k=1;k<=5;k++){var re=new RegExp('"(?:target_?'+k+'|tp_?'+k+'|take_?profit_?'+k+')'+suf+'"\\s*:\\s*"?([\\d,.]+)',"i");if((m=t.match(re)))put(k-1,NUM(m[1]))}});
+    if((m=t.match(/"(?:targets|take_profits|tps|target_prices)"\s*:\s*\[([^\]]*)\]/i))){m[1].split(",").forEach(function(x,i){var v=NUM(x);if(v!=null&&v>=10){var s=0;while(out[s]!=null&&s<5)s++;if(s<5&&out.indexOf(v)<0)out[s]=v}})}
+    var ORD={first:1,"1st":1,second:2,"2nd":2,third:3,"3rd":3,fourth:4,"4th":4,fifth:5,"5th":5};
+    var segs=[];t.split("\n").forEach(function(raw){if(/^\s*"/.test(raw.trim()))return;var l=raw.replace(/[*_`#>|]+/g," ").replace(/^\s*[-•]\s*/,"").trim();
+      l.split(/[;,]?\s*(?=\b(?:target|tp|take\s*profit)\s*#?\s*[1-5]\b|\b(?:first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?(?:target|take\s*profit|tp)\b)/i).forEach(function(x){x=x.trim();if(x)segs.push(x)})});
+    segs.forEach(function(l){
+      if((m=l.match(/^(?:target|tp|take\s*profit|t|profit\s*target)\s*#?\s*([1-5])\b[^:\d]*:?\s*(.*)$/i))){put(+m[1]-1,firstP(m[2]));return}
+      if((m=l.match(/^(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?(?:target|take\s*profit|tp)\b[^:\d]*:?\s*(.*)$/i))){put(ORD[m[1].toLowerCase()]-1,firstP(m[2]));return}
+      if((m=l.match(/^(?:targets?|take\s*profits?|tps?|profit\s*targets?)\b\s*:?\s*(.*)$/i))&&m[1]){var parts=m[1].replace(/\([^)]*\)/g," ").split(/\s*(?:\/|,\s(?=\D)|;|→|->|\bthen\b|\band\b)\s*/i);
+        parts.forEach(function(p){var v=firstP(p);if(v!=null&&out.indexOf(v)<0){var s=0;while(out[s]!=null&&s<5)s++;if(s<5)out[s]=v}})}});
+    var r=[];for(k=0;k<5;k++)if(out[k]!=null)r.push(out[k]);
+    return r.filter(function(v,i){return r.indexOf(v)===i});
+  }
+  /* opts: {dir, entry, stop, targets[], pv ($ per point per contract), qty, tick, srcLabel} */
+  function build(o){
+    var e=NUM(o.entry),s=NUM(o.stop);if(e==null||s==null||e===s)return {need:true,rows:[]};
+    var dir=o.dir==="long"||o.dir==="short"?o.dir:(s<e?"long":"short"),sg=dir==="long"?1:-1,R=Math.abs(e-s);
+    if(sg*(e-s)<=0)return {need:true,wrong:true,rows:[]};
+    var tick=NUM(o.tick)||0.25,pv=NUM(o.pv),q=Math.max(1,Math.floor(NUM(o.qty)||1));
+    var rt=function(p){var d=Math.max(0,(String(tick).split(".")[1]||"").length);return +(Math.round(p/tick)*tick).toFixed(d)};
+    var seen={},an=[];(o.targets||[]).forEach(function(x){var v=NUM(x&&typeof x==="object"?x.price:x);if(v==null||sg*(v-e)<=0||Math.abs(v-e)>e*0.1||seen[v])return;seen[v]=1;an.push({price:v,src:"a",label:x&&typeof x==="object"&&x.label?x.label:null})});
+    var rows=an.sort(function(a,b){return sg*(a.price-b.price)}).slice(0,5);
+    var lastR=rows.length?sg*(rows[rows.length-1].price-e)/R:0,step=Math.floor(lastR+1e-9)+1;
+    while(rows.length<5){rows.push({price:rt(e+sg*step*R),src:"r",step:step});step++}
+    rows.forEach(function(x,i){x.n=i+1;x.pts=sg*(x.price-e);x.r=x.pts/R;x.perC=pv?x.pts*pv:null;x.total=pv?x.pts*pv*q:null});
+    var scale=null;if(q>=2&&pv){var n=Math.min(q,5),base=Math.floor(q/n),extra=q%n,split=[],tot=0;for(var i=0;i<n;i++){var c=base+(i<extra?1:0);split.push(c);tot+=c*rows[i].pts*pv}scale={split:split,total:tot}}
+    return {need:false,dir:dir,R:R,qty:q,pv:pv,rows:rows,scale:scale,srcLabel:o.srcLabel||"from analysis"};
+  }
+  function usd(v){return v==null?"—":(v<0?"-":"")+"$"+Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function html(res,fmt){
+    fmt=fmt||function(p){return (+p).toLocaleString("en-US",{maximumFractionDigits:2})};
+    var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+    var h='<div class="tp5" role="region" aria-label="Five take profits"><p class="tp5-h">Take profits 1–5</p>';
+    if(!res||res.need)return h+'<p class="tp5-need">'+(res&&res.wrong?"Stop is on the wrong side of the entry.":"Need entry and stop.")+'</p></div>';
+    h+='<div class="tp5-w"><table class="tp5-t"><thead><tr><th>TP</th><th>Price</th><th>Pts</th><th>R</th><th>$/ct</th><th>$ × '+res.qty+'</th><th>Source</th></tr></thead><tbody>';
+    res.rows.forEach(function(x){h+='<tr class="tp5-'+x.src+'"><td>TP'+x.n+'</td><td><b>'+esc(fmt(x.price))+'</b></td><td>'+(res.dir==="long"?"+":"−")+x.pts.toFixed(2)+'</td><td>'+x.r.toFixed(1)+'R</td><td>'+esc(usd(x.perC))+'</td><td>'+esc(usd(x.total))+'</td><td><span class="tp5-s">'+(x.src==="a"?esc(x.label||res.srcLabel):"R-multiple (math only, not a level)")+'</span></td></tr>'});
+    h+='</tbody></table></div>';
+    if(res.scale)h+='<p class="tp5-n">Scale-out example: '+res.scale.split.map(function(c,i){return c+" @ TP"+(i+1)}).join(", ")+' = '+esc(usd(res.scale.total))+' if all fill.</p>';
+    if(res.rows.some(function(x){return x.src==="r"}))h+='<p class="tp5-n">R-multiple rows are math from your entry and stop, not chart levels. Check the chart before using them.</p>';
+    return h+'</div>';
+  }
+  if(typeof document!=="undefined"&&!document.getElementById("tp5-css")){var st=document.createElement("style");st.id="tp5-css";
+    st.textContent='.tp5{margin-top:10px;font-size:13px}.tp5-h{margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.7}'+
+    '.tp5-w{overflow-x:auto;max-width:100%}.tp5-t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:440px}'+
+    '.tp5-t th,.tp5-t td{padding:4px 6px;border-bottom:1px solid rgba(128,128,128,.25);text-align:right;white-space:nowrap}.tp5-t th:first-child,.tp5-t td:first-child,.tp5-t th:last-child,.tp5-t td:last-child{text-align:left}'+
+    '.tp5-t th{font-size:11px;font-weight:600;opacity:.75}.tp5-r td{opacity:.72}.tp5-r td:first-child{font-style:italic}'+
+    '.tp5-s{font-size:11px;padding:1px 6px;border-radius:99px;border:1px solid rgba(128,128,128,.4);white-space:nowrap}.tp5-a .tp5-s{border-color:rgba(40,170,110,.8)}'+
+    '.tp5-n,.tp5-need{margin:6px 0 0;font-size:12px;opacity:.8}@media (max-width:520px){.tp5-t{font-size:12px}.tp5-t th,.tp5-t td{padding:3px 4px}}';
+    (document.head||document.documentElement).appendChild(st)}
+  g.stratTargets=targets;g.stratTPs=build;g.stratTPHTML=html;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="strat-card">
+/* STRAT-CARD shared v1 (identical in Strat Dashboard, Strat Chart Reader, Strat Command, Trade Risk Check).
+   One engine: parse the pasted analysis -> Strat structure -> rules + risk -> one trade card.
+   Prices come ONLY from the paste (or the trader's own inputs). Nothing is invented; no probabilities. Needs strat-tf, strat-rules, strat-tp. */
+(function(g){
+  var INST={MNQ:{pv:2,t:.25},MES:{pv:5,t:.25},NQ:{pv:20,t:.25},ES:{pv:50,t:.25},MGC:{pv:10,t:.1},GC:{pv:100,t:.1},M2K:{pv:5,t:.1},RTY:{pv:50,t:.1},MYM:{pv:.5,t:1},YM:{pv:5,t:1}};
+  var RULES={maxRisk:200,dailyLoss:200,maxLosses:2,maxStopPts:25,minRR:2};
+  var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)&&n>0?n:null};
+  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+  var HDR=/^\s*STRAT-HANDOFF[^\n]*\n/;
+  function priceIn(s){s=String(s||"").replace(/\([^)]*\b(?:R|pts?|points?|ticks?)\b[^)]*\)/gi," ").replace(/\b\d+(?:\.\d+)?\s*(?:R|pts?|points?|ticks?|contracts?|%|x|min(?:ute)?s?)\b/gi," ").replace(/\$\s?[\d,.]+/g," ").replace(/\b1\s*tick\b/gi," ");
+    var m=s.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d{2,}/g)||[];for(var i=0;i<m.length;i++){var v=NUM(m[i]);if(v!=null&&v>=10)return v}return null}
+  function lineVal(lines,re){for(var i=0;i<lines.length;i++){var l=lines[i];if(/^\s*"/.test(l))continue;var m=l.replace(/[*_`#>|]+/g," ").trim().match(re);if(m){var v=priceIn(m[1]);if(v!=null)return v}}return null}
+  function stratCode(t){var at=t.indexOf('"strat"');if(at<0)return null;var st=t.lastIndexOf("{",at),d=0;for(var i=st;i>=0&&i<t.length;i++){var ch=t[i];if(ch==="{")d++;else if(ch==="}"){d--;if(!d){try{return JSON.parse(t.slice(st,i+1))}catch(e){return null}}}}return null}
+  function parse(text,opts){
+    opts=opts||{};var raw=String(text==null?"":text),t=raw.replace(HDR,"").replace(/\r/g,"").replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'");
+    var c=g.stratReadClaude?g.stratReadClaude(t):{},j=c.json||{},sc=stratCode(t)||{},lines=t.split("\n");
+    var sym=String(j.chart_symbol||j.symbol||sc.inst||"").toUpperCase().replace(/1!$/,"");if(!INST[sym]){var m=t.match(/\b(MNQ|MES|MGC|M2K|MYM|NQ|ES|GC|RTY|YM)(?:1!|[FGHJKMNQUVXZ]\d{1,4})?\b/);sym=m?m[1]:null}
+    var symAssumed=false;if(!sym&&opts.inst&&INST[String(opts.inst).toUpperCase()]){sym=String(opts.inst).toUpperCase();symAssumed=true}
+    var tf=(g.stratPickTF&&g.stratPickTF(t))||j.chart_timeframe||sc.tf||null;
+    var entry=NUM(j.entry_price)||NUM(sc.entry)||lineVal(lines,/^[-•\d.\s]*(?:entry|enter)\b[^:\d]*:?\s*(.*)$/i);
+    var stop=NUM(j.stop_price)||NUM(sc.stop)||lineVal(lines,/^[-•\d.\s]*stop(?:\s*loss)?\b[^:\d]*:?\s*(.*)$/i);
+    var tg=[j.target1_price,j.target2_price,j.target3_price,j.target4_price,j.target5_price].map(NUM).filter(Boolean).concat((Array.isArray(j.targets)?j.targets:[]).map(NUM).filter(Boolean),(Array.isArray(sc.targets)?sc.targets:[]).map(NUM).filter(Boolean),g.stratTargets?g.stratTargets(t):[]);
+    tg=tg.filter(function(v,i){return tg.indexOf(v)===i});
+    var dir=j.side==="long"||j.side==="short"?j.side:(sc.dir==="long"||sc.dir==="short"?sc.dir:(entry&&stop&&entry!==stop?(stop<entry?"long":"short"):null));
+    var lv=c.levels||[],lab=function(re){var x=lv.filter(function(l){return re.test(l.label)})[0];return x?x.price:null};
+    return {raw:t,c:c,j:j,sym:sym,symAssumed:symAssumed,tf:tf,entry:entry,stop:stop,targets:tg,dir:dir,last:NUM(j.last_price)||NUM(c.lastPrice),
+      pdh:NUM(j.pdh)||lab(/\bpdh\b|prior day high|previous day high/i),pdl:NUM(j.pdl)||lab(/\bpdl\b|prior day low|previous day low/i),pwh:NUM(j.pwh)||lab(/\bpwh\b|prior week high|previous week high/i),pwl:NUM(j.pwl)||lab(/\bpwl\b|prior week low|previous week low/i)};
+  }
+  function build(text,opts){
+    opts=opts||{};var p=parse(text,opts),c=p.c,j=p.j,I=INST[p.sym]||null,maxRisk=NUM(opts.maxRisk)||RULES.maxRisk;
+    var R=p.entry&&p.stop?Math.abs(p.entry-p.stop):null,perC=R&&I?R*I.pv:null,maxQty=perC?Math.floor(maxRisk/perC+1e-9):null,qty=maxQty>=1?maxQty:1;
+    var missing=[];if(!p.sym)missing.push("symbol (e.g. MNQ)");if(!p.tf)missing.push("chart timeframe");if(!p.entry)missing.push("entry price");if(!p.stop)missing.push("stop-loss price");if(!p.targets.length)missing.push("a target (prior high/low)");if(!p.last)missing.push("current price (optional)");
+    (Array.isArray(j.missing)?j.missing:[]).forEach(function(x){x=String(x).trim();if(x&&missing.indexOf(x)<0&&missing.length<10)missing.push(x)});
+    var rules=g.stratRules?g.stratRules({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty,maxRisk:maxRisk,minRR:RULES.minRR,maxStopPts:RULES.maxStopPts,claude:c,lastPrice:p.last}):{items:[],fails:0,warns:0};
+    var tps=g.stratTPs?g.stratTPs({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty}):{need:true,rows:[]};
+    var need=!p.entry||!p.stop||!p.dir,fails=rules.items.filter(function(x){return x.c==="bad"}),warns=rules.items.filter(function(x){return x.c==="meh"}),oks=rules.items.filter(function(x){return x.c==="ok"});
+    var noTrade=need||fails.length>0,long=p.dir==="long";
+    var ot=String(j.order_type||c.orderType||(String(c.entryText||"").match(/\b(buy|sell)\s+(stop|limit)\b/i)||[""])[0]||"").toLowerCase(),order;
+    if(/limit/.test(ot))order=(long?"Buy":"Sell")+" Limit";else if(/market/.test(ot))order="Market";else if(/stop/.test(ot))order=(long?"Buy":"Sell")+" Stop";else order=p.dir?(long?"Buy":"Sell")+" Stop (Strat default: stop order through the trigger)":"—";
+    var setup=String(c.setup||"").trim(),scen=String(j.scenario||"").toLowerCase();if(!/breakout|reversal|continuation/.test(scen))scen=/rev/i.test(setup)?"reversal":/cont/i.test(setup)?"continuation":/break/i.test(setup+" "+(c.location||""))?"breakout":"";
+    var ftfcTxt=j.ftfc_by_tf&&typeof j.ftfc_by_tf==="object"?Object.keys(j.ftfc_by_tf).map(function(k){return k+" "+j.ftfc_by_tf[k]}).join(", "):(c.ftfc&&c.ftfc.text)||"";
+    var fItem=rules.items.filter(function(x){return x.id==="ftfc"})[0],lItem=rules.items.filter(function(x){return x.id==="level"})[0],tItem=rules.items.filter(function(x){return x.id==="trigger"||x.id==="rs_force"})[0];
+    var conf=noTrade?{k:"none",t:"No trade",why:need?"Entry and stop are needed before anything can be judged.":fails.map(function(x){return x.t}).slice(0,3).join(" ")}:
+      (!warns.length&&fItem&&fItem.c==="ok"&&lItem&&lItem.c==="ok")?{k:"strong",t:"Strong evidence",why:"Every rule passed, continuity agrees and the setup is at a level."}:
+      warns.length<=2?{k:"mod",t:"Moderate evidence",why:"Rules pass, but check: "+warns.map(function(x){return x.t}).join(" ")}:{k:"weak",t:"Weak evidence",why:warns.length+" cautions: "+warns.map(function(x){return x.t}).slice(0,3).join(" ")};
+    var inval=j.invalidation?String(j.invalidation):p.stop&&p.dir?(long?"Price trading below ":"Price trading above ")+fmtP(p.stop,I)+" (your stop) cancels the setup."+(j.alt_scenario?" "+j.alt_scenario:""):"Need a stop to define invalidation.";
+    return {v:1,sym:p.sym,symAssumed:p.symAssumed,tf:p.tf,dir:p.dir,direction:need?"NO TRADE":noTrade?"NO TRADE":long?"BUY":"SELL",caution:!noTrade&&warns.length>0,
+      entry:p.entry,stop:p.stop,stopReason:String(j.stop_reason||c.stopText||"").slice(0,140),order:order,trigger:NUM(j.trigger_price),risk:{pts:R,perC:perC,maxQty:maxQty,qty:qty,total:perC?perC*qty:null,maxRisk:maxRisk},
+      rr:tps.rows&&tps.rows[0]?tps.rows[0].r:null,tps:tps,rules:rules,fails:fails,warns:warns,oks:oks,conf:conf,invalidation:inval,missing:missing,claudeCall:c.verdict||null,
+      structure:{candles:(c.sequence||[]).slice(-5),pattern:setup||"",scenario:scen,ftfc:ftfcTxt,pdh:p.pdh,pdl:p.pdl,pwh:p.pwh,pwl:p.pwl,levels:(c.levels||[]).slice(0,6),trend:c.trend||"",momentum:String(j.momentum||(j.market_structure&&j.market_structure.note)||""),location:c.location||"",last:p.last},
+      reason:{pattern:setup||"not stated",location:lItem?lItem.t:(c.location||"not stated"),continuity:fItem?fItem.t:"not stated",trigger:tItem?tItem.t:(c.entryText||"not stated")}};
+  }
+  function fmtP(v,I){if(v==null)return "—";var d=I&&I.t<1?(String(I.t).split(".")[1]||"").length:0;return (+v).toLocaleString("en-US",{minimumFractionDigits:Math.max(d,2),maximumFractionDigits:Math.max(d,2)})}
+  function usd(v){return v==null?"—":"$"+(+v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function text(k){if(!k)return "";var I=INST[k.sym],L=[];
+    L.push("TRADE CARD · "+(k.sym||"?")+(k.symAssumed?" (assumed)":"")+" · "+(k.tf||"?"));
+    L.push("DIRECTION: "+k.direction+(k.caution?" (caution)":""));
+    L.push("ENTRY: "+fmtP(k.entry,I)+" · ORDER: "+(k.direction==="NO TRADE"?"none (no trade)":k.order));
+    L.push("STOP-LOSS: "+fmtP(k.stop,I)+(k.stopReason?" ("+k.stopReason+")":""));
+    (k.tps.rows||[]).forEach(function(x){L.push("TP"+x.n+": "+fmtP(x.price,I)+" · "+x.r.toFixed(1)+"R"+(x.src==="r"?" (R-multiple, math only)":""))});
+    L.push("RISK-TO-REWARD (TP1): "+(k.rr!=null?"1 : "+k.rr.toFixed(2):"—")+(k.risk.perC?" · risk "+usd(k.risk.perC)+"/contract, max "+k.risk.maxQty+" contracts for "+usd(k.risk.maxRisk):""));
+    L.push("STRAT REASONING: pattern "+k.reason.pattern+" | location: "+k.reason.location+" | continuity: "+k.reason.continuity+" | trigger: "+k.reason.trigger);
+    L.push("CONFIDENCE: "+k.conf.t+" — "+k.conf.why);
+    L.push("INVALIDATION: "+k.invalidation);
+    if(k.direction==="NO TRADE")L.push("NO-TRADE WARNING: "+(k.fails.length?k.fails.map(function(x){return x.t}).join(" "):"Missing: "+k.missing.join(", ")));
+    if(k.missing.length)L.push("MISSING INFO: "+k.missing.join(", "));
+    L.push("For review only — no live data, no orders placed.");return L.join("\n")}
+  var CSS='.scard{border:2px solid rgba(128,128,128,.4);border-radius:12px;padding:12px 14px;margin:10px 0;font-size:15px;line-height:1.4}.scard h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75}'+
+   '.sc-dir{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:28px;font-weight:800;letter-spacing:.02em;margin-bottom:8px}.sc-dir small{font-size:13px;font-weight:600;opacity:.8}.scard.buy{border-color:#1f9d55}.scard.buy .sc-dir b{color:#1f9d55}.scard.sell{border-color:#d64545}.scard.sell .sc-dir b{color:#d64545}.scard.none{border-color:#8a8a8a}.scard.none .sc-dir b{color:#8a8a8a}'+
+   '.sc-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:6px 0}.sc-g>div{border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:6px 8px}.sc-g span{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.7}.sc-g b{font-size:18px}.sc-g em{display:block;font-style:normal;font-size:12px;opacity:.8}'+
+   '.sc-l{margin:6px 0;padding-left:18px}.sc-l li{margin:3px 0}.sc-warn{border-left:4px solid #d64545;padding:6px 10px;margin:8px 0;background:rgba(214,69,69,.08);border-radius:4px}.sc-miss{border-left:4px solid #d9a400;padding:6px 10px;margin:8px 0;background:rgba(217,164,0,.1);border-radius:4px}'+
+   '.sc-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.sc-btns button{min-height:36px;padding:6px 12px;border-radius:8px;border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer}.sc-foot{font-size:12px;opacity:.7;margin:8px 0 0}'+
+   '.sc-hand{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;margin:8px 0;font-size:14px}.sc-hand button{min-height:32px}';
+  function html(k,o){o=o||{};if(!k)return "";var I=INST[k.sym],cls=k.direction==="BUY"?"buy":k.direction==="SELL"?"sell":"none",h='<div class="scard '+cls+'" role="region" aria-label="Trade card"><h3>Trade card · '+esc(k.sym||"symbol?")+(k.symAssumed?" (assumed from app)":"")+' · '+esc(k.tf||"timeframe?")+'</h3>';
+    h+='<div class="sc-dir"><b>'+k.direction+'</b>'+(k.caution?'<small>CAUTION: '+k.warns.length+' rule'+(k.warns.length>1?"s":"")+' to check</small>':"")+(k.claudeCall?'<small>Claude said: '+esc(k.claudeCall)+'</small>':"")+'</div>';
+    if(k.direction==="NO TRADE")h+='<div class="sc-warn"><b>NO TRADE — SETUP DOES NOT MEET THE RULES.</b><ul class="sc-l">'+(k.fails.length?k.fails.map(function(x){return "<li>"+esc(x.t)+"</li>"}).join(""):"<li>Need an entry and a stop from the analysis.</li>")+'</ul></div>';
+    h+='<div class="sc-g"><div><span>Entry</span><b>'+fmtP(k.entry,I)+'</b><em>'+(k.direction==="NO TRADE"?"Reference only. No order.":esc(k.order))+'</em></div><div><span>Stop-loss</span><b>'+fmtP(k.stop,I)+'</b><em>'+esc(k.stopReason||"")+'</em></div><div><span>Risk-to-reward (TP1)</span><b>'+(k.rr!=null?"1 : "+k.rr.toFixed(2):"—")+'</b><em>'+(k.risk.perC?usd(k.risk.perC)+"/contract · max "+k.risk.maxQty+" for "+usd(k.risk.maxRisk):"")+'</em></div></div>';
+    h+=g.stratTPHTML?g.stratTPHTML(k.tps,function(v){return fmtP(v,I)}):"";
+    h+='<h3 style="margin-top:10px">Strat reasoning</h3><ul class="sc-l"><li><b>Pattern:</b> '+esc(k.reason.pattern)+(k.structure.candles.length?" ("+esc(k.structure.candles.join("-"))+")":"")+'</li><li><b>Location:</b> '+esc(k.reason.location)+'</li><li><b>Continuity:</b> '+esc(k.reason.continuity)+'</li><li><b>Trigger:</b> '+esc(k.reason.trigger)+'</li></ul>';
+    h+='<p><b>Confidence: '+esc(k.conf.t)+'.</b> '+esc(k.conf.why)+'</p><p><b>Invalidation:</b> '+esc(k.invalidation)+'</p>';
+    if(k.missing.length)h+='<div class="sc-miss"><b>Missing info</b>, add it to the paste or ask Claude: '+esc(k.missing.join(", "))+'.</div>';
+    h+='<p class="sc-foot">Daily limits: stop after −$'+RULES.dailyLoss+' or '+RULES.maxLosses+' losing trades today. Max stop '+RULES.maxStopPts+' pts, min '+RULES.minRR+'R.</p>';
+    if(o.sections){var S=k.structure,lv=function(n,v){return v!=null?"<li><b>"+n+":</b> "+fmtP(v,I)+"</li>":""};
+      h+='<details class="sc-sec" open><summary><b>1 · Structure</b> (Reader)</summary><ul class="sc-l"><li><b>Candles:</b> '+esc(S.candles.join("-")||"not given")+'</li><li><b>Pattern:</b> '+esc(S.pattern||"not given")+'</li><li><b>Scenario:</b> '+esc(S.scenario||"not given")+'</li><li><b>Continuity:</b> '+esc(S.ftfc||"not given")+'</li>'+lv("PDH",S.pdh)+lv("PDL",S.pdl)+lv("PWH",S.pwh)+lv("PWL",S.pwl)+
+        (S.levels.length?'<li><b>Key levels:</b> '+S.levels.map(function(x){return esc(x.label)+" "+fmtP(x.price,I)}).join(" · ")+'</li>':"")+'<li><b>Trend:</b> '+esc(S.trend||"not given")+(S.momentum?" · "+esc(S.momentum):"")+'</li><li><b>Location:</b> '+esc(S.location||"not given")+'</li>'+lv("Last price",S.last)+'</ul></details>';
+      h+='<details class="sc-sec" open><summary><b>2 · Validation &amp; risk</b> (Trade Risk Check)</summary><ul class="sc-l">'+k.rules.items.filter(function(x){return !x.hide}).map(function(x){return "<li>"+(x.c==="ok"?"✓ ":x.c==="bad"?"✕ ":"! ")+esc(x.t)+"</li>"}).join("")+'</ul></details>';
+      h+='<details class="sc-sec" open><summary><b>3 · Plan</b> (Command)</summary><ul class="sc-l"><li>'+(k.direction==="NO TRADE"?"No order. Wait for a setup that meets the rules.":esc(k.order)+" at "+fmtP(k.entry,I)+", stop "+fmtP(k.stop,I)+", up to "+k.risk.maxQty+" contract"+(k.risk.maxQty>1?"s":"")+" (risk "+usd(k.risk.total)+").")+'</li>'+(k.direction==="NO TRADE"?"":"<li>Cancel the order if the trigger bar closes without breaking.</li>")+'<li>'+esc(k.invalidation)+'</li></ul></details>'}
+    h+='<div class="sc-btns"><button type="button" data-sc="copy">Copy card</button>'+(o.handoff!==false?'<button type="button" data-sc="send">Copy for other app</button>':"")+'</div><p class="sc-foot">For review only — no live data, no orders placed.</p></div>';return h}
+  /* ---------- handoff between the apps ---------- */
+  var KEY="strat-handoff-v1",bc=null;try{bc=new BroadcastChannel("strat-handoff")}catch(e){}
+  function save(t,from){t=String(t||"").replace(HDR,"");if(t.trim().length<40)return;var o={text:t,from:from,at:Date.now()};try{localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}try{bc&&bc.postMessage(o)}catch(e){}}
+  function load(){try{return JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){return null}}
+  function copy(s){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(s).catch(function(){fb(s)});fb(s);return Promise.resolve()}
+  function fb(s){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
+  /* mount: {box, target, from, opts(), before(), sections} */
+  function mount(m){if(typeof document==="undefined")return;if(!document.getElementById("scard-css")){var st=document.createElement("style");st.id="scard-css";st.textContent=CSS;(document.head||document.documentElement).appendChild(st)}
+    var box=document.querySelector(m.box),tgt=document.querySelector(m.target);if(!box||!tgt)return;var bar=document.createElement("div");bar.className="sc-hand";bar.hidden=true;tgt.parentNode.insertBefore(bar,tgt);var out=document.createElement("div");tgt.appendChild(out);var last="",timer=null;
+    function render(){var t=box.value;if(t===last)return;last=t;if(t.trim().length<40){out.innerHTML="";g.__stratCard=null;return}var k=build(t,m.opts?m.opts():{});g.__stratCard={card:k,text:text(k)};out.innerHTML=html(k,{sections:m.sections,handoff:m.handoff});}
+    function soon(){clearTimeout(timer);timer=setTimeout(function(){render();if(box.value.trim().length>=40)save(box.value,m.from)},250)}
+    ["input","paste","change","drop"].forEach(function(ev){box.addEventListener(ev,soon)});document.addEventListener("paste",function(){setTimeout(soon,60)},true);
+    (m.watch||[]).forEach(function(sel){var el=document.querySelector(sel);if(el)el.addEventListener("change",function(){last="";render()})});
+    out.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-sc]");if(!b||!g.__stratCard)return;
+      if(b.getAttribute("data-sc")==="copy")copy(g.__stratCard.text).then(function(){b.textContent="Copied"});
+      else copy("STRAT-HANDOFF (from "+m.from+")\n"+box.value.replace(HDR,"")).then(function(){b.textContent="Copied: paste it into the other app"})});
+    function offer(o){if(!o||!o.text||o.from===m.from||o.text===box.value.replace(HDR,"")||Date.now()-o.at>12*3600e3)return;var d=new Date(o.at);
+      bar.innerHTML='<span>Last analysis from <b>'+esc(o.from)+'</b> ('+d.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})+')</span><button type="button">Use it here</button><button type="button" aria-label="Dismiss">✕</button>';bar.hidden=false;
+      var bs=bar.querySelectorAll("button");bs[0].onclick=function(){bar.hidden=true;use(o.text)};bs[1].onclick=function(){bar.hidden=true}}
+    function use(t){if(m.before)try{m.before()}catch(e){}box.focus();box.value=t;var dt;try{dt=new DataTransfer();dt.setData("text/plain",t)}catch(e){}try{box.dispatchEvent(new ClipboardEvent("paste",{bubbles:true,clipboardData:dt}))}catch(e){}box.dispatchEvent(new InputEvent("input",{bubbles:true}));soon()}
+    if(bc)bc.onmessage=function(e){offer(e.data)};window.addEventListener("storage",function(e){if(e.key===KEY)offer(load())});
+    setTimeout(function(){if(!box.value.trim())offer(load());render()},300);
+    g.__stratCardUse=use;}
+  g.stratCard=build;g.stratCardHTML=html;g.stratCardText=text;g.stratCardMount=mount;g.stratHandoff={save:save,load:load};g.STRAT_LIMITS=RULES;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script>
+(function(){var $=function(i){return document.getElementById(i)};
+ try{var sv=JSON.parse(localStorage.getItem("strat-dash-settings")||"{}");if(sv.inst)$("dInst").value=sv.inst;if(sv.qty)$("dQty").value=sv.qty;if(sv.risk)$("dRisk").value=sv.risk}catch(e){}
+ function keep(){try{localStorage.setItem("strat-dash-settings",JSON.stringify({inst:$("dInst").value,qty:$("dQty").value,risk:$("dRisk").value}))}catch(e){}sizeLine()}
+ function sizeLine(){var k=window.__stratCard&&window.__stratCard.card,q=parseInt($("dQty").value,10),el=$("size");if(!k||!k.risk.perC||!(q>=1)){el.textContent="";return}
+   var tot=k.risk.perC*q,ok=tot<=k.risk.maxRisk+1e-9;el.innerHTML=(ok?"✓ ":"✕ ")+"Your size: "+q+" contract"+(q>1?"s":"")+" risk $"+tot.toFixed(2)+(ok?" (within your $"+k.risk.maxRisk+" limit).":" — over your $"+k.risk.maxRisk+" limit. Use "+k.risk.maxQty+" or fewer.")}
+ ["dInst","dQty","dRisk"].forEach(function(i){$(i).addEventListener("change",keep);$(i).addEventListener("input",keep)});
+ stratCardMount({box:"#dIn",target:"#dCard",from:"Strat Dashboard",sections:true,watch:["#dInst","#dRisk"],opts:function(){return {inst:$("dInst").value,maxRisk:$("dRisk").value}}});
+ new MutationObserver(sizeLine).observe($("dCard"),{childList:true,subtree:true});
+ $("dClear").onclick=function(){$("dIn").value="";$("dIn").dispatchEvent(new InputEvent("input",{bubbles:true}));$("dIn").focus()};
+ $("dLast").onclick=function(){var o=stratHandoff.load();if(o&&o.text)window.__stratCardUse(o.text);else alert("No saved analysis yet on this device. Paste one, or use Copy for other app in another app.")};
+})();
+</script></body></html>
