@@ -787,13 +787,13 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     return {need:false,dir:dir,R:R,qty:q,pv:pv,rows:rows,scale:scale,srcLabel:o.srcLabel||"from analysis"};
   }
   function usd(v){return v==null?"—":(v<0?"-":"")+"$"+Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
-  function html(res,fmt){
+  function html(res,fmt,opt){opt=opt||{};var mn=+opt.minRR||0;
     fmt=fmt||function(p){return (+p).toLocaleString("en-US",{maximumFractionDigits:2})};
     var esc=function(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
     var h='<div class="tp5" role="region" aria-label="Five take profits"><p class="tp5-h">Take profits 1–5</p>';
     if(!res||res.need)return h+'<p class="tp5-need">'+(res&&res.wrong?"Stop is on the wrong side of the entry.":"Need entry and stop.")+'</p></div>';
-    h+='<div class="tp5-w"><table class="tp5-t"><thead><tr><th>TP</th><th>Price</th><th>Pts</th><th>R</th><th>$/ct</th><th>$ × '+res.qty+'</th><th>Source</th></tr></thead><tbody>';
-    res.rows.forEach(function(x){h+='<tr class="tp5-'+x.src+'"><td>TP'+x.n+'</td><td><b>'+esc(fmt(x.price))+'</b></td><td>'+(res.dir==="long"?"+":"−")+x.pts.toFixed(2)+'</td><td>'+x.r.toFixed(1)+'R</td><td>'+esc(usd(x.perC))+'</td><td>'+esc(usd(x.total))+'</td><td><span class="tp5-s">'+(x.src==="a"?esc(x.label||res.srcLabel):"R-multiple (math only, not a level)")+'</span></td></tr>'});
+    h+='<div class="tp5-w"><table class="tp5-t"><thead><tr><th>TP</th><th>Price</th><th>Pts</th><th>R</th><th>$/ct</th><th>$ × '+res.qty+'</th><th>R:R if exit</th><th>Source</th></tr></thead><tbody>';
+    res.rows.forEach(function(x){h+='<tr class="tp5-'+x.src+'"><td>TP'+x.n+'</td><td><b>'+esc(fmt(x.price))+'</b></td><td>'+(res.dir==="long"?"+":"−")+x.pts.toFixed(2)+'</td><td>'+x.r.toFixed(1)+'R</td><td>'+esc(usd(x.perC))+'</td><td>'+esc(usd(x.total))+'</td><td>1 : '+x.r.toFixed(2)+(mn&&x.r<mn-1e-9?' <span class="tp5-lo">below min</span>':'')+'</td><td><span class="tp5-s">'+(x.src==="a"?esc(x.label||res.srcLabel):"R-multiple (math only, not a level)")+'</span></td></tr>'});
     h+='</tbody></table></div>';
     if(res.scale)h+='<p class="tp5-n">Scale-out example: '+res.scale.split.map(function(c,i){return c+" @ TP"+(i+1)}).join(", ")+' = '+esc(usd(res.scale.total))+' if all fill.</p>';
     if(res.rows.some(function(x){return x.src==="r"}))h+='<p class="tp5-n">R-multiple rows are math from your entry and stop, not chart levels. Check the chart before using them.</p>';
@@ -805,18 +805,18 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     '.tp5-t th,.tp5-t td{padding:4px 6px;border-bottom:1px solid rgba(128,128,128,.25);text-align:right;white-space:nowrap}.tp5-t th:first-child,.tp5-t td:first-child,.tp5-t th:last-child,.tp5-t td:last-child{text-align:left}'+
     '.tp5-t th{font-size:11px;font-weight:600;opacity:.75}.tp5-r td{opacity:.72}.tp5-r td:first-child{font-style:italic}'+
     '.tp5-s{font-size:11px;padding:1px 6px;border-radius:99px;border:1px solid rgba(128,128,128,.4);white-space:nowrap}.tp5-a .tp5-s{border-color:rgba(40,170,110,.8)}'+
-    '.tp5-n,.tp5-need{margin:6px 0 0;font-size:12px;opacity:.8}@media (max-width:520px){.tp5-t{font-size:12px}.tp5-t th,.tp5-t td{padding:3px 4px}}';
+    '.tp5-lo{font-size:10px;color:#d64545;font-weight:700}.tp5-n,.tp5-need{margin:6px 0 0;font-size:12px;opacity:.8}@media (max-width:520px){.tp5-t{font-size:12px}.tp5-t th,.tp5-t td{padding:3px 4px}}';
     (document.head||document.documentElement).appendChild(st)}
   g.stratTargets=targets;g.stratTPs=build;g.stratTPHTML=html;
 })(typeof window!=="undefined"?window:globalThis);
 </script>
 <script id="strat-card">
-/* STRAT-CARD shared v1 (identical in Strat Dashboard, Strat Chart Reader, Strat Command, Trade Risk Check).
+/* STRAT-CARD shared v2 (identical in Strat Dashboard, Strat Chart Reader, Strat Command, Trade Risk Check).
    One engine: parse the pasted analysis -> Strat structure -> rules + risk -> one trade card.
    Prices come ONLY from the paste (or the trader's own inputs). Nothing is invented; no probabilities. Needs strat-tf, strat-rules, strat-tp. */
 (function(g){
   var INST={MNQ:{pv:2,t:.25},MES:{pv:5,t:.25},NQ:{pv:20,t:.25},ES:{pv:50,t:.25},MGC:{pv:10,t:.1},GC:{pv:100,t:.1},M2K:{pv:5,t:.1},RTY:{pv:50,t:.1},MYM:{pv:.5,t:1},YM:{pv:5,t:1}};
-  var RULES={maxRisk:200,dailyLoss:200,maxLosses:2,maxStopPts:25,minRR:2};
+  var RULES={maxRisk:200,dailyLoss:200,maxLosses:2,maxStopPts:25};var MICRO={NQ:"MNQ",ES:"MES",GC:"MGC",RTY:"M2K",YM:"MYM"};
   var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)&&n>0?n:null};
   var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
   var HDR=/^\s*STRAT-HANDOFF[^\n]*\n/;
@@ -836,15 +836,17 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     tg=tg.filter(function(v,i){return tg.indexOf(v)===i});
     var dir=j.side==="long"||j.side==="short"?j.side:(sc.dir==="long"||sc.dir==="short"?sc.dir:(entry&&stop&&entry!==stop?(stop<entry?"long":"short"):null));
     var lv=c.levels||[],lab=function(re){var x=lv.filter(function(l){return re.test(l.label)})[0];return x?x.price:null};
-    return {raw:t,c:c,j:j,sym:sym,symAssumed:symAssumed,tf:tf,entry:entry,stop:stop,targets:tg,dir:dir,last:NUM(j.last_price)||NUM(c.lastPrice),
+    var tb=j.trigger_bar&&typeof j.trigger_bar==="object"?{h:NUM(j.trigger_bar.high),l:NUM(j.trigger_bar.low)}:{h:NUM(j.trigger_bar_high),l:NUM(j.trigger_bar_low)};if(!(tb.h&&tb.l&&tb.h>tb.l))tb=null;
+    return {tb:tb,raw:t,c:c,j:j,sym:sym,symAssumed:symAssumed,tf:tf,entry:entry,stop:stop,targets:tg,dir:dir,last:NUM(j.last_price)||NUM(c.lastPrice),
       pdh:NUM(j.pdh)||lab(/\bpdh\b|prior day high|previous day high/i),pdl:NUM(j.pdl)||lab(/\bpdl\b|prior day low|previous day low/i),pwh:NUM(j.pwh)||lab(/\bpwh\b|prior week high|previous week high/i),pwl:NUM(j.pwl)||lab(/\bpwl\b|prior week low|previous week low/i)};
   }
   function build(text,opts){
-    opts=opts||{};var p=parse(text,opts),c=p.c,j=p.j,I=INST[p.sym]||null,maxRisk=NUM(opts.maxRisk)||RULES.maxRisk;
+    opts=opts||{};var p=parse(text,opts),ov=opts.ov||{};if(ov.sym&&INST[ov.sym]){p.sym=ov.sym;p.symAssumed=false}if(NUM(ov.stop))p.stop=NUM(ov.stop);if(Array.isArray(ov.targets))p.targets=ov.targets.slice();
+    var c=p.c,j=p.j,I=INST[p.sym]||null,maxRisk=NUM(opts.maxRisk)||RULES.maxRisk,minRR=NUM(opts.minRR)||(g.stratMinRR?g.stratMinRR():2);
     var R=p.entry&&p.stop?Math.abs(p.entry-p.stop):null,perC=R&&I?R*I.pv:null,maxQty=perC?Math.floor(maxRisk/perC+1e-9):null,qty=maxQty>=1?maxQty:1;
     var missing=[];if(!p.sym)missing.push("symbol (e.g. MNQ)");if(!p.tf)missing.push("chart timeframe");if(!p.entry)missing.push("entry price");if(!p.stop)missing.push("stop-loss price");if(!p.targets.length)missing.push("a target (prior high/low)");if(!p.last)missing.push("current price (optional)");
     (Array.isArray(j.missing)?j.missing:[]).forEach(function(x){x=String(x).trim();if(x&&missing.indexOf(x)<0&&missing.length<10)missing.push(x)});
-    var rules=g.stratRules?g.stratRules({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty,maxRisk:maxRisk,minRR:RULES.minRR,maxStopPts:RULES.maxStopPts,claude:c,lastPrice:p.last}):{items:[],fails:0,warns:0};
+    var rules=g.stratRules?g.stratRules({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty,maxRisk:maxRisk,minRR:minRR,maxStopPts:RULES.maxStopPts,claude:c,lastPrice:p.last,trigger:p.tb}):{items:[],fails:0,warns:0};
     var tps=g.stratTPs?g.stratTPs({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty}):{need:true,rows:[]};
     var need=!p.entry||!p.stop||!p.dir,fails=rules.items.filter(function(x){return x.c==="bad"}),warns=rules.items.filter(function(x){return x.c==="meh"}),oks=rules.items.filter(function(x){return x.c==="ok"});
     var noTrade=need||fails.length>0,long=p.dir==="long";
@@ -857,12 +859,29 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
       (!warns.length&&fItem&&fItem.c==="ok"&&lItem&&lItem.c==="ok")?{k:"strong",t:"Strong evidence",why:"Every rule passed, continuity agrees and the setup is at a level."}:
       warns.length<=2?{k:"mod",t:"Moderate evidence",why:"Rules pass, but check: "+warns.map(function(x){return x.t}).join(" ")}:{k:"weak",t:"Weak evidence",why:warns.length+" cautions: "+warns.map(function(x){return x.t}).slice(0,3).join(" ")};
     var inval=j.invalidation?String(j.invalidation):p.stop&&p.dir?(long?"Price trading below ":"Price trading above ")+fmtP(p.stop,I)+" (your stop) cancels the setup."+(j.alt_scenario?" "+j.alt_scenario:""):"Need a stop to define invalidation.";
-    return {v:1,sym:p.sym,symAssumed:p.symAssumed,tf:p.tf,dir:p.dir,direction:need?"NO TRADE":noTrade?"NO TRADE":long?"BUY":"SELL",caution:!noTrade&&warns.length>0,
+    var sugs=suggest(p,I,{R:R,perC:perC,maxQty:maxQty,maxRisk:maxRisk,minRR:minRR,tps:tps,planQty:Math.floor(NUM(opts.planQty)||0)});
+    return {v:1,minRR:minRR,sugs:sugs,ov:ov,sym:p.sym,symAssumed:p.symAssumed,tf:p.tf,dir:p.dir,direction:need?"NO TRADE":noTrade?"NO TRADE":long?"BUY":"SELL",caution:!noTrade&&warns.length>0,
       entry:p.entry,stop:p.stop,stopReason:String(j.stop_reason||c.stopText||"").slice(0,140),order:order,trigger:NUM(j.trigger_price),risk:{pts:R,perC:perC,maxQty:maxQty,qty:qty,total:perC?perC*qty:null,maxRisk:maxRisk},
       rr:tps.rows&&tps.rows[0]?tps.rows[0].r:null,tps:tps,rules:rules,fails:fails,warns:warns,oks:oks,conf:conf,invalidation:inval,missing:missing,claudeCall:c.verdict||null,
       structure:{candles:(c.sequence||[]).slice(-5),pattern:setup||"",scenario:scen,ftfc:ftfcTxt,pdh:p.pdh,pdl:p.pdl,pwh:p.pwh,pwl:p.pwl,levels:(c.levels||[]).slice(0,6),trend:c.trend||"",momentum:String(j.momentum||(j.market_structure&&j.market_structure.note)||""),location:c.location||"",last:p.last},
       reason:{pattern:setup||"not stated",location:lItem?lItem.t:(c.location||"not stated"),continuity:fItem?fItem.t:"not stated",trigger:tItem?tItem.t:(c.entryText||"not stated")}};
   }
+  /* rules-math adjustment options: only parsed prices + the trader's settings, never new chart levels */
+  function suggest(p,I,x){var out=[],e=p.entry,s=p.stop,long=p.dir==="long",sg=long?1:-1,t=I?I.t:.25;if(!e||!s||!p.dir)return out;
+    var rt=function(v){var d=(String(t).split(".")[1]||"").length;return +(Math.round(v/t)*t).toFixed(d)},F=function(v){return fmtP(v,I)},R=x.R,big=R>RULES.maxStopPts+1e-9,overRisk=x.maxQty!=null&&x.maxQty<1;
+    if(x.planQty&&x.maxQty>=1&&x.planQty>x.maxQty)out.push({id:"qty",title:"Reduce contracts to "+x.maxQty,detail:x.planQty+" contracts risk "+usd(x.perC*x.planQty)+", over your "+usd(x.maxRisk)+". "+x.maxQty+" contract"+(x.maxQty>1?"s":"")+" risk "+usd(x.perC*x.maxQty)+". Keeps the Strat stop.",apply:{planQty:x.maxQty},what:"Contracts "+x.planQty+" → "+x.maxQty});
+    if(overRisk&&MICRO[p.sym]&&!big){var mi=INST[MICRO[p.sym]],r1=R*mi.pv;if(r1<=x.maxRisk+1e-9)out.push({id:"micro",title:"Trade the micro ("+MICRO[p.sym]+") instead",detail:"1 "+p.sym+" risks "+usd(x.perC)+", over your "+usd(x.maxRisk)+". 1 "+MICRO[p.sym]+" risks "+usd(r1)+" with the same stop. Keeps the Strat stop.",apply:{sym:MICRO[p.sym]},what:"Instrument "+p.sym+" → "+MICRO[p.sym]})}
+    if(p.tb){var cand=rt(long?p.tb.l-t:p.tb.h+t),inside=long?s>p.tb.l:s<p.tb.h,cr=sg*(e-cand);
+      if((big||overRisk||inside)&&Math.abs(cand-s)>t/2&&cr>0&&cr<=RULES.maxStopPts+1e-9&&(!I||cr*I.pv<=x.maxRisk+1e-9))
+        out.push({id:"tstop",title:"Move stop beyond the trigger candle to "+F(cand),detail:(inside?"Your stop is inside the trigger candle ("+F(p.tb.l)+"–"+F(p.tb.h)+"). ":"Your stop is "+(+R.toFixed(2))+" pts"+(big?" (over "+RULES.maxStopPts+")":"")+". ")+"The Strat stop is 1 tick past the trigger candle "+(long?"low":"high")+": "+(+cr.toFixed(2))+" pts"+(I?", "+usd(cr*I.pv)+"/contract":"")+".",apply:{stop:cand},what:"Stop "+F(s)+" → "+F(cand)})}
+    if(big&&!out.some(function(o){return o.id==="tstop"}))out.push({id:"nofix",title:"No rules-based fix for the "+(+R.toFixed(2))+"-pt stop",detail:"Fewer contracts don't fix a stop over "+RULES.maxStopPts+" pts, and moving the stop closer would break the Strat stop rule. Skip it or wait for a tighter trigger candle.",apply:null});
+    var rows=x.tps.rows||[],r1=rows[0]?rows[0].r:null;
+    if(r1!=null&&r1<x.minRR-1e-9){var an=rows.filter(function(r){return r.src==="a"});var nx=an.filter(function(r){return r.r>=x.minRR-1e-9})[0];
+      if(nx)out.push({id:"tp_next",title:"Use TP"+nx.n+" at "+F(nx.price)+" ("+nx.r.toFixed(2)+"R) as the first target",detail:"TP1 is only "+r1.toFixed(2)+"R, under your "+x.minRR+":1. TP"+nx.n+" is a level from the analysis.",apply:{targets:an.filter(function(r){return r.r>=nx.r-1e-9}).map(function(r){return r.price})},what:"TP1 "+F(rows[0].price)+" → "+F(nx.price)});
+      var mp=rt(e+sg*x.minRR*R);out.push({id:"tp_r",title:"R-multiple target at "+x.minRR+"R = "+F(mp)+" (math only, not a level)",detail:"Meets your "+x.minRR+":1 on this stop. Only use it if price can realistically get there on the chart.",apply:{targets:[mp].concat(an.filter(function(r){return sg*(r.price-mp)>0}).map(function(r){return r.price}))},what:"TP1 "+F(rows[0].price)+" → "+F(mp)+" (math)"})}
+    if(rows[0]){var t1=rows[0].price,bl=[["PDH",p.pdh],["PWH",p.pwh],["PDL",p.pdl],["PWL",p.pwl]].filter(function(b){return b[1]&&(long?/H$/.test(b[0]):/L$/.test(b[0]))&&sg*(b[1]-e)>t/2&&sg*(t1-b[1])>t/2}).sort(function(a,b){return sg*(a[1]-b[1])})[0];
+      if(bl){var br=sg*(bl[1]-e)/R;out.push({id:"partial",title:"Take partial at "+bl[0]+" "+F(bl[1])+" ("+br.toFixed(2)+"R)",detail:bl[0]+" sits between your entry and TP1 and can stop the move. Take some off there, keep the rest for TP1.",apply:{targets:[bl[1]].concat(rows.filter(function(r){return r.src==="a"}).map(function(r){return r.price}))},what:"Added "+bl[0]+" "+F(bl[1])+" as TP1"})}}
+    return out}
   function fmtP(v,I){if(v==null)return "—";var d=I&&I.t<1?(String(I.t).split(".")[1]||"").length:0;return (+v).toLocaleString("en-US",{minimumFractionDigits:Math.max(d,2),maximumFractionDigits:Math.max(d,2)})}
   function usd(v){return v==null?"—":"$"+(+v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
   function text(k){if(!k)return "";var I=INST[k.sym],L=[];
@@ -873,6 +892,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     (k.tps.rows||[]).forEach(function(x){L.push("TP"+x.n+": "+fmtP(x.price,I)+" · "+x.r.toFixed(1)+"R"+(x.src==="r"?" (R-multiple, math only)":""))});
     L.push("RISK-TO-REWARD (TP1): "+(k.rr!=null?"1 : "+k.rr.toFixed(2):"—")+(k.risk.perC?" · risk "+usd(k.risk.perC)+"/contract, max "+k.risk.maxQty+" contracts for "+usd(k.risk.maxRisk):""));
     L.push("STRAT REASONING: pattern "+k.reason.pattern+" | location: "+k.reason.location+" | continuity: "+k.reason.continuity+" | trigger: "+k.reason.trigger);
+    L.push("MIN R:R: "+k.minRR+":1");
     L.push("CONFIDENCE: "+k.conf.t+" — "+k.conf.why);
     L.push("INVALIDATION: "+k.invalidation);
     if(k.direction==="NO TRADE")L.push("NO-TRADE WARNING: "+(k.fails.length?k.fails.map(function(x){return x.t}).join(" "):"Missing: "+k.missing.join(", ")));
@@ -883,16 +903,23 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
    '.sc-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:6px 0}.sc-g>div{border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:6px 8px}.sc-g span{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.7}.sc-g b{font-size:18px}.sc-g em{display:block;font-style:normal;font-size:12px;opacity:.8}'+
    '.sc-l{margin:6px 0;padding-left:18px}.sc-l li{margin:3px 0}.sc-warn{border-left:4px solid #d64545;padding:6px 10px;margin:8px 0;background:rgba(214,69,69,.08);border-radius:4px}.sc-miss{border-left:4px solid #d9a400;padding:6px 10px;margin:8px 0;background:rgba(217,164,0,.1);border-radius:4px}'+
    '.sc-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.sc-btns button{min-height:36px;padding:6px 12px;border-radius:8px;border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer}.sc-foot{font-size:12px;opacity:.7;margin:8px 0 0}'+
-   '.sc-hand{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;margin:8px 0;font-size:14px}.sc-hand button{min-height:32px}';
+   '.sc-hand{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;margin:8px 0;font-size:14px}.sc-hand button{min-height:32px}'+
+   '.sc-min{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;margin:6px 0}.sc-min input{width:80px;min-height:34px;margin-left:6px;font:inherit;border-radius:6px;border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit;padding:2px 6px}.sc-min span{opacity:.7}'+
+   '.sc-sug{border:1px solid rgba(217,164,0,.6);border-radius:10px;padding:8px 10px;margin:8px 0}.sc-sug h3 small{text-transform:none;letter-spacing:0;font-weight:400}.sc-opt{border-top:1px solid rgba(128,128,128,.25);padding:6px 0}.sc-opt:first-of-type{border-top:0}.sc-opt p{margin:2px 0 4px;font-size:14px;opacity:.9}'+
+   '.sc-chg{padding:6px 10px;margin:6px 0;border-radius:6px;background:rgba(31,157,85,.12);border-left:4px solid #1f9d55;font-size:14px}.sc-chg button{margin-left:8px;min-height:30px;border-radius:6px;border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit;cursor:pointer}';
   function html(k,o){o=o||{};if(!k)return "";var I=INST[k.sym],cls=k.direction==="BUY"?"buy":k.direction==="SELL"?"sell":"none",h='<div class="scard '+cls+'" role="region" aria-label="Trade card"><h3>Trade card · '+esc(k.sym||"symbol?")+(k.symAssumed?" (assumed from app)":"")+' · '+esc(k.tf||"timeframe?")+'</h3>';
     h+='<div class="sc-dir"><b>'+k.direction+'</b>'+(k.caution?'<small>CAUTION: '+k.warns.length+' rule'+(k.warns.length>1?"s":"")+' to check</small>':"")+(k.claudeCall?'<small>Claude said: '+esc(k.claudeCall)+'</small>':"")+'</div>';
     if(k.direction==="NO TRADE")h+='<div class="sc-warn"><b>NO TRADE — SETUP DOES NOT MEET THE RULES.</b><ul class="sc-l">'+(k.fails.length?k.fails.map(function(x){return "<li>"+esc(x.t)+"</li>"}).join(""):"<li>Need an entry and a stop from the analysis.</li>")+'</ul></div>';
     h+='<div class="sc-g"><div><span>Entry</span><b>'+fmtP(k.entry,I)+'</b><em>'+(k.direction==="NO TRADE"?"Reference only. No order.":esc(k.order))+'</em></div><div><span>Stop-loss</span><b>'+fmtP(k.stop,I)+'</b><em>'+esc(k.stopReason||"")+'</em></div><div><span>Risk-to-reward (TP1)</span><b>'+(k.rr!=null?"1 : "+k.rr.toFixed(2):"—")+'</b><em>'+(k.risk.perC?usd(k.risk.perC)+"/contract · max "+k.risk.maxQty+" for "+usd(k.risk.maxRisk):"")+'</em></div></div>';
-    h+=g.stratTPHTML?g.stratTPHTML(k.tps,function(v){return fmtP(v,I)}):"";
+    h+='<div class="sc-min"><label>Min R:R <input type="number" data-sc="minrr" min="0.5" max="10" step="0.25" value="'+k.minRR+'" inputmode="decimal"></label><span>below this = NO TRADE'+(k.minRR<2?' · below 2:1 = caution':'')+'</span></div>';
+    if(o.changed&&o.changed.length)h+='<div class="sc-chg"><b>Changed:</b> '+esc(o.changed.join(" · "))+' <button type="button" data-sc="undo">Undo</button></div>';
+    var sg2=(k.sugs||[]).filter(function(x){return !(o.ignored&&o.ignored[x.id])});
+    if(sg2.length)h+='<div class="sc-sug"><h3>Adjustment options <small>(rules math for your review, not trade calls)</small></h3>'+sg2.map(function(x){return '<div class="sc-opt"><b>'+esc(x.title)+'</b><p>'+esc(x.detail)+'</p><div class="sc-btns">'+(x.apply?'<button type="button" data-sg-apply="'+x.id+'">Apply</button>':"")+'<button type="button" data-sg-ignore="'+x.id+'">Ignore</button></div></div>'}).join("")+'</div>';
+    h+=g.stratTPHTML?g.stratTPHTML(k.tps,function(v){return fmtP(v,I)},{minRR:k.minRR}):"";
     h+='<h3 style="margin-top:10px">Strat reasoning</h3><ul class="sc-l"><li><b>Pattern:</b> '+esc(k.reason.pattern)+(k.structure.candles.length?" ("+esc(k.structure.candles.join("-"))+")":"")+'</li><li><b>Location:</b> '+esc(k.reason.location)+'</li><li><b>Continuity:</b> '+esc(k.reason.continuity)+'</li><li><b>Trigger:</b> '+esc(k.reason.trigger)+'</li></ul>';
     h+='<p><b>Confidence: '+esc(k.conf.t)+'.</b> '+esc(k.conf.why)+'</p><p><b>Invalidation:</b> '+esc(k.invalidation)+'</p>';
     if(k.missing.length)h+='<div class="sc-miss"><b>Missing info</b>, add it to the paste or ask Claude: '+esc(k.missing.join(", "))+'.</div>';
-    h+='<p class="sc-foot">Daily limits: stop after −$'+RULES.dailyLoss+' or '+RULES.maxLosses+' losing trades today. Max stop '+RULES.maxStopPts+' pts, min '+RULES.minRR+'R.</p>';
+    h+='<p class="sc-foot">Daily limits: stop after −$'+RULES.dailyLoss+' or '+RULES.maxLosses+' losing trades today. Max stop '+RULES.maxStopPts+' pts, min '+k.minRR+':1.</p>';
     if(o.sections){var S=k.structure,lv=function(n,v){return v!=null?"<li><b>"+n+":</b> "+fmtP(v,I)+"</li>":""};
       h+='<details class="sc-sec" open><summary><b>1 · Structure</b> (Reader)</summary><ul class="sc-l"><li><b>Candles:</b> '+esc(S.candles.join("-")||"not given")+'</li><li><b>Pattern:</b> '+esc(S.pattern||"not given")+'</li><li><b>Scenario:</b> '+esc(S.scenario||"not given")+'</li><li><b>Continuity:</b> '+esc(S.ftfc||"not given")+'</li>'+lv("PDH",S.pdh)+lv("PDL",S.pdl)+lv("PWH",S.pwh)+lv("PWL",S.pwl)+
         (S.levels.length?'<li><b>Key levels:</b> '+S.levels.map(function(x){return esc(x.label)+" "+fmtP(x.price,I)}).join(" · ")+'</li>':"")+'<li><b>Trend:</b> '+esc(S.trend||"not given")+(S.momentum?" · "+esc(S.momentum):"")+'</li><li><b>Location:</b> '+esc(S.location||"not given")+'</li>'+lv("Last price",S.last)+'</ul></details>';
@@ -907,11 +934,19 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
   function fb(s){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
   /* mount: {box, target, from, opts(), before(), sections} */
   function mount(m){if(typeof document==="undefined")return;if(!document.getElementById("scard-css")){var st=document.createElement("style");st.id="scard-css";st.textContent=CSS;(document.head||document.documentElement).appendChild(st)}
-    var box=document.querySelector(m.box),tgt=document.querySelector(m.target);if(!box||!tgt)return;var bar=document.createElement("div");bar.className="sc-hand";bar.hidden=true;tgt.parentNode.insertBefore(bar,tgt);var out=document.createElement("div");tgt.appendChild(out);var last="",timer=null;
-    function render(){var t=box.value;if(t===last)return;last=t;if(t.trim().length<40){out.innerHTML="";g.__stratCard=null;return}var k=build(t,m.opts?m.opts():{});g.__stratCard={card:k,text:text(k)};out.innerHTML=html(k,{sections:m.sections,handoff:m.handoff});}
+    var box=document.querySelector(m.box),tgt=document.querySelector(m.target);if(!box||!tgt)return;var bar=document.createElement("div");bar.className="sc-hand";bar.hidden=true;tgt.parentNode.insertBefore(bar,tgt);var out=document.createElement("div");tgt.appendChild(out);var last="",timer=null,st={ov:{},hist:[],chg:[],ign:{}};
+    function render(force){var t=box.value;if(t===last&&!force)return;if(t!==last)st={ov:{},hist:[],chg:[],ign:{}};last=t;if(t.trim().length<40){out.innerHTML="";g.__stratCard=null;return}
+      var o=Object.assign({},m.opts?m.opts():{},{ov:st.ov});if(st.ov.planQty)o.planQty=st.ov.planQty;var k=build(t,o);g.__stratCard={card:k,text:text(k),base:Object.keys(st.ov).length?null:text(k)};out.innerHTML=html(k,{sections:m.sections,handoff:m.handoff,changed:st.chg,ignored:st.ign});}
+    g.__stratCardRender=function(){render(true)};
+    out.addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("[data-sg-apply],[data-sg-ignore]");if(!a||!g.__stratCard)return;var id=a.getAttribute("data-sg-apply"),k=g.__stratCard.card;
+      if(id){var sgx=k.sugs.filter(function(x){return x.id===id})[0];if(!sgx||!sgx.apply)return;st.hist.push({ov:JSON.parse(JSON.stringify(st.ov)),chg:st.chg.slice()});st.ov=Object.assign({},st.ov,sgx.apply);st.chg=st.chg.concat([sgx.what]);if(sgx.apply.planQty&&m.onQty)m.onQty(sgx.apply.planQty)}
+      else st.ign[a.getAttribute("data-sg-ignore")]=1;render(true)});
+    out.addEventListener("click",function(e){var u=e.target.closest&&e.target.closest('[data-sc="undo"]');if(!u)return;var h=st.hist.pop();if(h){st.ov=h.ov;st.chg=h.chg;if(m.onQty&&!st.ov.planQty&&m.restoreQty)m.restoreQty()}render(true)});
+    out.addEventListener("change",function(e){if(e.target.getAttribute&&e.target.getAttribute("data-sc")==="minrr"){g.stratSetMinRR&&g.stratSetMinRR(e.target.value);render(true)}});
+    document.addEventListener("strat-minrr",function(){render(true)});try{new BroadcastChannel("strat-minrr").onmessage=function(){render(true)}}catch(e){}window.addEventListener("storage",function(e){if(e.key==="strat-minrr")render(true)});
     function soon(){clearTimeout(timer);timer=setTimeout(function(){render();if(box.value.trim().length>=40)save(box.value,m.from)},250)}
     ["input","paste","change","drop"].forEach(function(ev){box.addEventListener(ev,soon)});document.addEventListener("paste",function(){setTimeout(soon,60)},true);
-    (m.watch||[]).forEach(function(sel){var el=document.querySelector(sel);if(el)el.addEventListener("change",function(){last="";render()})});
+    (m.watch||[]).forEach(function(sel){var el=document.querySelector(sel);if(el)el.addEventListener("change",function(){render(true)})});
     out.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-sc]");if(!b||!g.__stratCard)return;
       if(b.getAttribute("data-sc")==="copy")copy(g.__stratCard.text).then(function(){b.textContent="Copied"});
       else copy("STRAT-HANDOFF (from "+m.from+")\n"+box.value.replace(HDR,"")).then(function(){b.textContent="Copied: paste it into the other app"})});
@@ -926,7 +961,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
 })(typeof window!=="undefined"?window:globalThis);
 </script>
 <script id="strat-rules">
-/* STRAT-RULES shared v2 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
+/* STRAT-RULES shared v3 (identical in Strat Chart Reader, Strat Command, Trade Risk Check).
    Established Strat practice turned into pass / warn / fail checks. Uses only data the app already has
    (Claude's pasted read, the user's own levels and settings). Never creates entries, stops or targets. */
 (function(g){
@@ -970,7 +1005,7 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     var c=ctx.claude||{},items=[],add=function(id,k,t){items.push({id:id,c:k,t:t,hide:(ctx.hide||[]).indexOf(id)>=0})};
     var e=NUM(ctx.entry),s=NUM(ctx.stop),tg=(ctx.targets||[]).map(NUM).filter(function(x){return x!=null});
     var dir=ctx.dir||(e!=null&&s!=null?(s<e?"long":"short"):null),sg=dir==="short"?-1:1,long=dir!=="short";
-    var R=(e!=null&&s!=null)?Math.abs(e-s):null,tick=NUM(ctx.tick)||0.25,minRR=NUM(ctx.minRR)||2,maxPts=NUM(ctx.maxStopPts)||25,maxRisk=NUM(ctx.maxRisk)||200;
+    var R=(e!=null&&s!=null)?Math.abs(e-s):null,tick=NUM(ctx.tick)||0.25,minRR=NUM(ctx.minRR)||(g.stratMinRR?g.stratMinRR():2),maxPts=NUM(ctx.maxStopPts)||25,maxRisk=NUM(ctx.maxRisk)||200;
     // 1. Claude's call
     if(c.verdict==="no trade")add("call","bad","Claude says NO TRADE. Don't take it.");
     else if(c.verdict==="wait")add("call","bad","Claude says WAIT: not a trade until the trigger breaks and the read says trade.");
@@ -1022,8 +1057,9 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
       else add("rs_force","ok","Rob Smith rule: not in force yet. Only a stop order at "+fmt(e)+"; no entry until it breaks.")}
     // 7. magnitude
     if(dir&&R&&tg.length){var t1=tg[0],rr=sg*(t1-e)/R;
-      if(rr>=minRR-1e-9)add("rr","ok","Room to Target 1 is "+rr.toFixed(1)+"R (needs "+minRR+"R).");
-      else add("rr","bad","Target 1 is only "+rr.toFixed(1)+"R away. Strat magnitude needs at least "+minRR+"R.");
+      if(rr<minRR-1e-9)add("rr","bad","Target 1 is only "+rr.toFixed(2)+"R away. Your minimum is "+minRR+":1.");
+      else if(rr<2-1e-9)add("rr","meh","Target 1 is "+rr.toFixed(2)+"R: below 2:1 (common standard; your journal grades at 2R). Meets your "+minRR+":1 minimum.");
+      else add("rr","ok","Room to Target 1 is "+rr.toFixed(1)+"R (min "+minRR+":1).");
       var opp=lv.filter(function(x){return x.kind===(long?"resistance":"support")});
       var near=opp.filter(function(x){return Math.abs(x.price-t1)<=Math.max(4*tick,0.15*R)});
       var bh=(ctx.bars||[]).slice(0,-1).filter(function(b){var v=NUM(long?b.h:b.l);return v!=null&&sg*(v-e)>0&&Math.abs(v-t1)<=Math.max(2*tick,0.05*R)});
@@ -1069,6 +1105,9 @@ kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border
     '.rsref ol{margin:6px 0 4px;padding-left:20px}.rsref li{margin:4px 0}.rsref-s{margin:4px 0 2px;font-size:11px;opacity:.7}';(document.head||document.documentElement).appendChild(st)}
   function rsMount(){if(typeof document==="undefined")return;var els=document.querySelectorAll("[data-rsref]");for(var i=0;i<els.length;i++)if(!els[i].firstChild)els[i].innerHTML=rsHTML()}
   if(typeof document!=="undefined"){if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",rsMount);else setTimeout(rsMount,0)}
+  /* one saved minimum reward:risk for every app (default 2) */
+  g.stratMinRR=function(){try{var v=parseFloat(localStorage.getItem("strat-minrr"));if(v>=0.5&&v<=10)return v}catch(e){}return 2};
+  g.stratSetMinRR=function(v){v=parseFloat(v);if(!(v>=0.5&&v<=10))return;try{localStorage.setItem("strat-minrr",String(v))}catch(e){}try{new BroadcastChannel("strat-minrr").postMessage(v)}catch(e){}try{document.dispatchEvent(new CustomEvent("strat-minrr",{detail:v}))}catch(e){}};
   g.stratReadClaude=readClaude;g.stratRules=rules;g.stratRobSmithHTML=rsHTML;
 })(typeof window!=="undefined"?window:globalThis);
 </script>
@@ -1478,7 +1517,7 @@ TP2:    ${P.fmt(P.t2)}${P.qty>0?`\nSize:   ${P.qty} contract${P.qty>1?"s":""}`:"
   function stratFor(r){if(!window.stratRules||!r||r.example)return null;
     try{const P=plan(r),side=sideOf(r),sym=r.symbol||$("sym").value,f=ftfcState();let c={};try{c=stratReadClaude(JSON.stringify(r))}catch(x){}
       const q=(typeof riskState!=="undefined"&&riskState&&riskState.qty>=1)?riskState.qty:(P.qty>0?P.qty:1);
-      return stratRules({dir:side==="long"||side==="short"?side:null,entry:P.e,stop:numOf(r.stop_price),targets:[P.t1,P.t2].filter(v=>v!=null),pv:PV[sym],tick:TICK[sym],qty:q,maxRisk:+$("rMax").value||200,minRR:2,maxStopPts:25,
+      return stratRules({dir:side==="long"||side==="short"?side:null,entry:P.e,stop:numOf(r.stop_price),targets:[P.t1,P.t2].filter(v=>v!=null),pv:PV[sym],tick:TICK[sym],qty:q,maxRisk:+$("rMax").value||200,minRR:(window.stratMinRR?stratMinRR():2),maxStopPts:25,
         ftfc:f.n&&f.dir!=="none"?{g:f.g,r:f.r,known:f.g+f.r}:null,claude:c})}catch(e){return null}}
   function signalOf(r){
     const items=[],add=(k,label,val)=>items.push([k,label,val]);
@@ -1577,7 +1616,7 @@ TP2:    ${P.fmt(P.t2)}${P.qty>0?`\nSize:   ${P.qty} contract${P.qty>1?"s":""}`:"
   const aQty=()=>{const v=parseInt($("aQty").value,10);return v>0?Math.min(50,v):0};
   function aQtyInfo(){const pv=PV[$("sym").value],k=KIND[$("sym").value];$("aQtyInfo").textContent=(k?k+" contract":"")+(pv&&aQty()?` · ${aQty()} × ${$("sym").value} = $${(pv*aQty()).toLocaleString()} per point`:pv?` · $${pv} per point each`:"");}
   $("aQty").addEventListener("input",aQtyInfo);$("sym").addEventListener("change",aQtyInfo);aQtyInfo();
-  const SCHEMA=`{"verdict":"trade"|"wait"|"no trade","trade_quality":"good"|"bad","quality_reason":"one plain sentence why it is a good or bad trade","headline":"max 8 words","summary":"1-2 plain sentences","direction":"Bullish"|"Bearish"|"Neutral","confidence":"Low"|"Medium"|"High","market_condition":"2-4 words","sequence":["2U","1"],"setup":"name or None","entry":"text","stop":"text","target1":"text","target2":"text","entry_price":number|null,"stop_price":number|null,"target1_price":number|null,"target2_price":number|null,"side":"long"|"short"|null,"order_type":"buy stop"|"sell stop"|"buy limit"|"sell limit"|"market","chart_symbol":${SYMS.map(k=>'"'+k+'"').join("|")}|"Other"|null,"chart_timeframe":"1m"|"5m"|"15m"|"30m"|"1h"|"4h"|"Daily"|"Weekly"|null,"last_price":number|null,"alt_scenario":"text","reasons":["..."],"risks":["..."],"ftfc":"text","market_structure":{"trend":"uptrend"|"downtrend"|"range"|"broadening","swings":["HL","HH"],"last_event":"BOS up"|"BOS down"|"CHoCH up"|"CHoCH down"|"none","event_price":number|null,"note":"1 plain sentence"},"price_structure":{"levels":[{"price":number,"kind":"resistance"|"support","label":"2-4 words, e.g. swing high","strength":"strong"|"medium"|"weak"}],"location":"at support"|"at resistance"|"mid-range"|"breaking out"|"breaking down","note":"1 plain sentence"},"scenario":"breakout"|"reversal"|"continuation"|"none","trigger_price":number|null,"stop_reason":"short text, e.g. below the inside bar low","target3_price":number|null,"target4_price":number|null,"target5_price":number|null,"ftfc_by_tf":{"Monthly":"green"|"red"|"unknown","Weekly":"green"|"red"|"unknown","Daily":"green"|"red"|"unknown","60m":"green"|"red"|"unknown"},"pdh":number|null,"pdl":number|null,"pwh":number|null,"pwl":number|null,"momentum":"1 plain sentence","invalidation":"what price action cancels the setup","evidence":["plain notes on how strong the evidence is, no percentages"],"missing":["anything you could not read or confirm"]}`;
+  const SCHEMA=`{"verdict":"trade"|"wait"|"no trade","trade_quality":"good"|"bad","quality_reason":"one plain sentence why it is a good or bad trade","headline":"max 8 words","summary":"1-2 plain sentences","direction":"Bullish"|"Bearish"|"Neutral","confidence":"Low"|"Medium"|"High","market_condition":"2-4 words","sequence":["2U","1"],"setup":"name or None","entry":"text","stop":"text","target1":"text","target2":"text","entry_price":number|null,"stop_price":number|null,"target1_price":number|null,"target2_price":number|null,"side":"long"|"short"|null,"order_type":"buy stop"|"sell stop"|"buy limit"|"sell limit"|"market","chart_symbol":${SYMS.map(k=>'"'+k+'"').join("|")}|"Other"|null,"chart_timeframe":"1m"|"5m"|"15m"|"30m"|"1h"|"4h"|"Daily"|"Weekly"|null,"last_price":number|null,"alt_scenario":"text","reasons":["..."],"risks":["..."],"ftfc":"text","market_structure":{"trend":"uptrend"|"downtrend"|"range"|"broadening","swings":["HL","HH"],"last_event":"BOS up"|"BOS down"|"CHoCH up"|"CHoCH down"|"none","event_price":number|null,"note":"1 plain sentence"},"price_structure":{"levels":[{"price":number,"kind":"resistance"|"support","label":"2-4 words, e.g. swing high","strength":"strong"|"medium"|"weak"}],"location":"at support"|"at resistance"|"mid-range"|"breaking out"|"breaking down","note":"1 plain sentence"},"scenario":"breakout"|"reversal"|"continuation"|"none","trigger_price":number|null,"trigger_bar":{"high":number|null,"low":number|null},"stop_reason":"short text, e.g. below the inside bar low","target3_price":number|null,"target4_price":number|null,"target5_price":number|null,"ftfc_by_tf":{"Monthly":"green"|"red"|"unknown","Weekly":"green"|"red"|"unknown","Daily":"green"|"red"|"unknown","60m":"green"|"red"|"unknown"},"pdh":number|null,"pdl":number|null,"pwh":number|null,"pwl":number|null,"momentum":"1 plain sentence","invalidation":"what price action cancels the setup","evidence":["plain notes on how strong the evidence is, no percentages"],"missing":["anything you could not read or confirm"]}`;
   function buildPrompt(forChat){
     return `You are an expert day-trading coach who uses Rob Smith's "The Strat" method. Analyze the ${forChat?"chart screenshot I'm attaching":"attached TradingView chart screenshot"}.
 
@@ -1594,14 +1633,14 @@ Steps:
 0. Read the chart header / legend: the ticker (map futures like "MNQ1!", "MNQZ2026", "Micro E-mini Nasdaq" to MNQ; "MGC1!" to MGC; "ES1!" (E-mini S&P) to ES vs "MES1!" (Micro) to MES, etc.), the timeframe (TradingView "15" = 15m, "60" or "1h" = 1h, "240" = 4h, "D" = Daily, "W" = Weekly), and the current/last price (highlighted label on the right price axis). If the header disagrees with the trader context above, trust the screenshot.
 1. Read the most recent 5-8 candles, right-most is newest. Label each in Strat terms: "1" (inside), "2U", "2D", "3" (outside), comparing each to the candle before it.
 2. Identify any Strat actionable setup (2-1-2, 3-1-2, 2-2 reversal, 1-2-2 RevStrat, 3-2-2, inside bar, shooter/hammer) or say none.
-3. Give direction bias, whether it is a good time to trade (trade / wait / no trade), and a concrete plan: WHERE TO ENTER (usually a buy stop 1 tick above the trigger bar high for longs, sell stop 1 tick below the trigger bar low for shorts), WHERE THE STOP LOSS GOES (other side of the trigger bar), TAKE PROFIT 1 and 2 (prior swing highs/lows or visible levels; aim for T1 at least 2x the risk). Read every one of these as a NUMBER off the price axis and round to the instrument tick (${$("sym").value} tick = ${TICK[$("sym").value]??"its tick size"}). Give the planned levels even when the verdict is wait.
+3. Give direction bias, whether it is a good time to trade (trade / wait / no trade), and a concrete plan: WHERE TO ENTER (usually a buy stop 1 tick above the trigger bar high for longs, sell stop 1 tick below the trigger bar low for shorts), WHERE THE STOP LOSS GOES (other side of the trigger bar), TAKE PROFIT 1 and 2 (prior swing highs/lows or visible levels; aim for T1 at least ${(window.stratMinRR?stratMinRR():2)}:1, prefer 2:1+). Read every one of these as a NUMBER off the price axis and round to the instrument tick (${$("sym").value} tick = ${TICK[$("sym").value]??"its tick size"}). Give the planned levels even when the verdict is wait.
 4. Say what full timeframe continuity you can or cannot confirm.
 4b. MARKET STRUCTURE: from the visible swings, is it an uptrend (higher highs + higher lows), downtrend (lower highs + lower lows), range, or broadening (Strat megaphone: higher highs AND lower lows)? List the last 4-6 swing points oldest to newest as HH/HL/LH/LL. Note the latest break of structure (BOS: price breaks a swing in the trend direction) or change of character (CHoCH: first break against the trend) and its price.
 4c. PRICE STRUCTURE: read the key support and resistance levels off the price axis (swing highs/lows, range top/bottom, prior day high/low if labeled, levels price reacted to several times). Up to 6 levels, each a number. Say where price sits now (at support, at resistance, mid-range, breaking out, breaking down). Place targets at or just before resistance (longs) or support (shorts), and don't enter straight into a level.
-5. Grade it: is this a GOOD trade (clean Strat setup, with the trend/continuity, sensible stop, at least 2R to target 1) or a BAD trade (choppy, against the higher timeframes, no clear trigger, poor reward)? A setup that is good but not yet triggered is still "good" with verdict "wait".
+5. Grade it: is this a GOOD trade (clean Strat setup, with the trend/continuity, sensible stop, at least ${(window.stratMinRR?stratMinRR():2)}:1 to target 1, prefer 2:1+) or a BAD trade (choppy, against the higher timeframes, no clear trigger, poor reward)? A setup that is good but not yet triggered is still "good" with verdict "wait".
 6. Be honest: if the chart is choppy, unclear or unreadable, say wait or no trade. Don't force a trade.
 7. NEVER guess a price you can't read clearly: use null and list it in "missing". Only fill PDH/PDL/PWH/PWL, continuity per timeframe and levels if they are visible on the chart or given above; otherwise null / "unknown".
-8. Verdict must be "no trade" when the trader's rules aren't met: no actionable Strat signal, against full timeframe continuity, no level behind the setup, Target 1 under 2R, stop wider than 25 points, or more than $200 risk for one contract. Use stop orders through the trigger bar (Buy Stop / Sell Stop) unless a limit is clearly better, and give up to 5 targets only at real prior highs/lows or levels (null for the rest). No percentages or win-rate guesses.
+8. Verdict must be "no trade" when the trader's rules aren't met: no actionable Strat signal, against full timeframe continuity, no level behind the setup, Target 1 under ${(window.stratMinRR?stratMinRR():2)}:1, stop wider than 25 points, or more than $200 risk for one contract. Use stop orders through the trigger bar (Buy Stop / Sell Stop) unless a limit is clearly better, and give up to 5 targets only at real prior highs/lows or levels (null for the rest). No percentages or win-rate guesses.
 ${forChat?`
 Answer in plain language with headings: Symbol and timeframe you see, Market structure (trend + swings + BOS/CHoCH), Price structure (key support/resistance prices), Bullish or Bearish, Good trade or Bad trade (and why), Verdict (Trade / Wait / No trade), Candle labels, Setup, Entry, Stop, Targets, If it goes the other way, Timeframe continuity, Watch out.
 
