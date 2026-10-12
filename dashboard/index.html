@@ -332,6 +332,114 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
   g.stratTargets=targets;g.stratTPs=build;g.stratTPHTML=html;
 })(typeof window!=="undefined"?window:globalThis);
 </script>
+<script id="strat-ms">
+/* strat-ms: market-structure layer (Phillip's MASTER TRADING CHART ANALYSIS INSTRUCTIONS). Shared, identical in all 4 apps.
+   Reads only what Claude wrote. Never invents levels. Strat stays the trade-decision basis; this adds Location evidence. */
+(function(g){
+  var N=function(v){if(v==null||v==="")return null;var n=parseFloat(String(v).replace(/[,$\s]/g,""));return isFinite(n)&&n>0?n:null};
+  var S=function(v){return v==null?"":String(v).trim()};
+  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+  var A=function(v){return Array.isArray(v)?v:[]};
+  var SCHEMA='"where_price_now":{"last_close":number|null,"direction":"up"|"down"|"sideways"|null,"structure":"bullish"|"bearish"|"ranging"|null,"premium_discount":"premium"|"discount"|"equilibrium"|"no valid range"|null,"near":"short text: nearest zone/level","phase":"short text, e.g. pullback into demand","extended":true|false|null},'+
+   '"order_blocks":[{"side":"bullish"|"bearish","upper":number,"lower":number,"status":"fresh"|"tested"|"mitigated"|"invalidated","interaction":"approaching"|"entering"|"rejecting"|"breaking"|"none","reason":"why it is an OB","confirmation":"displacement / BOS that confirms it, or none"}],'+
+   '"pivots":[{"type":"high"|"low","price":number,"major":true|false,"confirmed":true|false,"equal":true|false}],'+
+   '"liquidity":[{"side":"buy-side"|"sell-side","price":number|null,"upper":number|null,"lower":number|null,"reason":"e.g. equal highs"}],'+
+   '"zones":[{"rank":1,"kind":"sr"|"supply"|"demand"|"ob"|"fvg"|"liquidity"|"bos"|"choch"|"premium"|"discount","upper":number,"lower":number,"reason":"why it matters","relation":"above"|"below"|"inside"|"approaching"}],'+
+   '"timeframes":[{"tf":"e.g. 1h","role":"htf"|"mid"|"entry","trend":"bullish"|"bearish"|"ranging","notes":"short"}],"tf_agreement":"agree"|"conflict"|"partial"|"single timeframe only",'+
+   '"scenarios":{"bullish":"text","bearish":"text","no_trade":"text"},"entry_plan":{"area":"text","confirmation":"text","invalidation":"text","stop":number|null,"targets":[number]},'+
+   '"confidence":{"strong":["facts read directly from the chart"],"speculative":["interpretation / weaker reads"]},"watch_next":"1-2 sentences","tv_levels":[{"price":number,"label":"short TradingView label"}]';
+  var FORMAT='Start your answer with the heading "WHERE PRICE IS NOW." (where price sits right now vs structure and zones, latest close if readable, extended or approaching an entry area). Then use these numbered headings in order:\n'+
+   '1. Current structure: HH/HL or LH/LL, bullish / bearish / ranging.\n2. Bullish order blocks: upper/lower price, fresh/tested/mitigated/invalidated, approaching/entering/rejecting/breaking, why it is an OB, displacement/BOS confirmation.\n3. Bearish order blocks: same details.\n'+
+   '4. Pivot highs/lows: recent confirmed pivots, major vs minor, equal highs/lows, buy-side / sell-side liquidity, confirmed vs still developing.\n5. Key zones ranked by importance (S/R, supply/demand, OBs, FVGs, liquidity pools, BOS, CHOCH, premium/discount only if there is a valid dealing range): upper/lower, why it matters, price above/below/inside/approaching.\n'+
+   '6. Location: where price is vs those zones; latest close if readable; extended vs approaching an entry area.\n7. Scenarios: bullish, bearish, and no-trade.\n8. Trade plan only when justified: entry area, confirmation needed, invalidation, stop, targets, R:R. Never exceed my risk ($200 per trade, 25-point max stop, minimum R:R '+'%MIN%'+':1).\n9. Short summary: what to watch next.\n'+
+   'Multi-timeframe: read the highest timeframe first, then intermediate, then the entry timeframe; say whether they agree or conflict. Never assume a timeframe I did not provide.\n'+
+   'Confidence: separate facts read from the chart from interpretation; mark strong vs speculative.\n'+
+   'Rules: never fabricate prices, patterns or indicators. If the image is blurry or has no price scale, say exactly what is missing and ask for it. Say WAIT / NO TRADE when the chart does not support a trade. No guarantees.\n'+
+   'Annotation: you cannot draw on the image, so give exact TradingView horizontal levels/zones as a list of "price  label".\n'+
+   'Keep The Strat as the trade decision (Pattern + Location + Continuity + Trigger, full timeframe continuity, Rob Smith rules). Market structure is Location evidence.';
+  function minRR(){return g.stratMinRR?g.stratMinRR():2}
+  function format(){return FORMAT.replace("%MIN%",minRR())}
+  function prompt(o){o=o||{};return 'You are my price-action / market-structure analyst and Strat coach. Analyze the TradingView screenshot(s) and notes I attach.\n\nTrader: futures day trader (MNQ, MES, NQ, gold), 8:30 AM to 2-3 PM CT, Apex evaluation. Risk: $200 max per trade, $200 max daily loss, 2 losing trades max per day, 25-point max stop, minimum reward:risk '+minRR()+':1.'+(o.inst?' Instrument in my app: '+o.inst+'.':'')+'\n\n'+format()+
+    '\n\nAt the very end, add a JSON code block with one object so my trading app can read it (use null when you cannot read a value; list unreadable items in "missing"):\n{"verdict":"trade"|"wait"|"no trade","setup":"Strat setup name or None","sequence":["2U","1"],"side":"long"|"short"|null,"chart_symbol":"MNQ"|"MES"|"NQ"|"ES"|"MGC"|"GC"|null,"chart_timeframe":"text"|null,"last_price":number|null,"entry_price":number|null,"stop_price":number|null,"target1_price":number|null,"target2_price":number|null,"target3_price":number|null,"target4_price":number|null,"target5_price":number|null,"order_type":"buy stop"|"sell stop"|"buy limit"|"sell limit"|"market","trigger_bar":{"high":number|null,"low":number|null},"stop_reason":"text","ftfc_by_tf":{"Monthly":"green"|"red"|"unknown","Weekly":"green"|"red"|"unknown","Daily":"green"|"red"|"unknown","60m":"green"|"red"|"unknown"},"pdh":number|null,"pdl":number|null,"pwh":number|null,"pwl":number|null,"price_structure":{"levels":[{"price":number,"kind":"resistance"|"support","label":"text","strength":"strong"|"medium"|"weak"}],"location":"at support"|"at resistance"|"mid-range"|"breaking out"|"breaking down","note":"text"},"invalidation":"text","missing":["..."],'+SCHEMA+'}'}
+  function zone(z){var u=N(z.upper),l=N(z.lower),p=N(z.price);if(!u&&!l&&p)u=l=p;if(u&&!l)l=u;if(l&&!u)u=l;if(!u)return null;if(l>u){var t=u;u=l;l=t}return {u:u,l:l}}
+  function rel(z,last){if(!last)return "";return last>z.u?"below":last<z.l?"above":"inside"} /* zone relative to price: zone below price, etc. */
+  function parse(j,raw){j=j&&typeof j==="object"?j:{};raw=String(raw||"");var ms={has:false};
+    var w=j.where_price_now&&typeof j.where_price_now==="object"?j.where_price_now:null;
+    var hm=raw.match(/WHERE PRICE IS NOW\.?\**:?\s*\**\s*([^\n]*(?:\n(?!\s*(?:#+\s*)?\**\s*1[.)]\s)[^\n]+){0,3})/i);
+    ms.wpn=w?{last:N(w.last_close),dir:S(w.direction),structure:S(w.structure),pd:S(w.premium_discount),near:S(w.near),phase:S(w.phase),ext:w.extended===true?"extended":w.extended===false?"not extended":""}:null;
+    ms.wpnText=hm?S(hm[1]).replace(/[*_#]+/g,"").slice(0,400):"";
+    ms.obs=A(j.order_blocks).map(function(o){var z=zone(o||{});if(!z)return null;var sd=/bear/i.test(o.side)?"bear":/bull/i.test(o.side)?"bull":null;return sd?{side:sd,u:z.u,l:z.l,status:S(o.status).toLowerCase(),inter:S(o.interaction),reason:S(o.reason),conf:S(o.confirmation)}:null}).filter(Boolean);
+    ms.pivots=A(j.pivots).map(function(p){var v=N(p&&p.price);return v?{type:/low/i.test(p.type)?"low":"high",price:v,major:p.major===true||/major/i.test(p.major),confirmed:p.confirmed!==false,equal:p.equal===true}:null}).filter(Boolean);
+    ms.liq=A(j.liquidity).map(function(x){var z=zone(x||{});return z?{side:/buy/i.test(x.side)?"buy-side":/sell/i.test(x.side)?"sell-side":S(x.side),u:z.u,l:z.l,reason:S(x.reason)}:null}).filter(Boolean);
+    ms.zones=A(j.zones).map(function(x,i){var z=zone(x||{});return z?{rank:parseInt(x.rank)||i+1,kind:S(x.kind).toLowerCase()||"zone",u:z.u,l:z.l,reason:S(x.reason),relation:S(x.relation)}:null}).filter(Boolean).sort(function(a,b){return a.rank-b.rank});
+    ms.tfs=A(j.timeframes).map(function(t){return t&&S(t.tf)?{tf:S(t.tf),role:S(t.role).toLowerCase(),trend:S(t.trend),notes:S(t.notes)}:null}).filter(Boolean);
+    var ro={htf:0,mid:1,entry:2};ms.tfs.sort(function(a,b){return (ro[a.role]!=null?ro[a.role]:1)-(ro[b.role]!=null?ro[b.role]:1)});
+    ms.agree=S(j.tf_agreement);
+    if(!ms.agree&&ms.tfs.length>1){var tr=ms.tfs.map(function(t){return /bull/i.test(t.trend)?"b":/bear/i.test(t.trend)?"s":"r"});ms.agree=tr.indexOf("b")>=0&&tr.indexOf("s")>=0?"conflict (from the timeframe trends)":tr.every(function(x){return x===tr[0]})?"agree (from the timeframe trends)":"partial"}
+    var sc=j.scenarios&&typeof j.scenarios==="object"?j.scenarios:{};ms.sc={bull:S(sc.bullish),bear:S(sc.bearish),none:S(sc.no_trade)};
+    var ep=j.entry_plan&&typeof j.entry_plan==="object"?j.entry_plan:{};ms.ep={area:S(ep.area),conf:S(ep.confirmation),inval:S(ep.invalidation),stop:N(ep.stop),targets:A(ep.targets).map(N).filter(Boolean)};
+    var cf=j.confidence&&typeof j.confidence==="object"&&!Array.isArray(j.confidence)?j.confidence:{};ms.strong=A(cf.strong).map(S).filter(Boolean);ms.spec=A(cf.speculative).map(S).filter(Boolean);
+    ms.watch=S(j.watch_next);
+    ms.tv=A(j.tv_levels).map(function(x){var v=N(x&&x.price);return v?{price:v,label:S(x.label)||"level"}:null}).filter(Boolean);ms.tvDerived=false;
+    if(!ms.tv.length){var d=[];ms.zones.forEach(function(z){d.push({price:z.u,label:"Z"+z.rank+" "+z.kind+" top"});if(z.l!==z.u)d.push({price:z.l,label:"Z"+z.rank+" "+z.kind+" bottom"})});
+      ms.obs.forEach(function(o){d.push({price:o.u,label:(o.side==="bull"?"Bull":"Bear")+" OB top"});d.push({price:o.l,label:(o.side==="bull"?"Bull":"Bear")+" OB bottom"})});
+      ms.pivots.forEach(function(p){d.push({price:p.price,label:(p.major?"Major ":"Minor ")+"pivot "+p.type+(p.equal?" (equal)":"")})});
+      if(d.length){ms.tv=d;ms.tvDerived=true}}
+    ms.missing=A(j.missing).map(S).filter(Boolean);
+    ms.noScale=/no (?:visible )?price (?:scale|axis)|(?:blurry|unreadable|cannot read|can't read|can not read)[^.\n]{0,40}(?:price|scale|axis|chart|image)|price (?:scale|axis)[^.\n]{0,30}(?:not visible|missing|cut off|unreadable)/i.test(raw+" "+ms.missing.join(" "));
+    ms.has=!!(ms.wpn||ms.wpnText||ms.obs.length||ms.pivots.length||ms.liq.length||ms.zones.length||ms.tfs.length||ms.agree||ms.sc.bull||ms.sc.bear||ms.sc.none||ms.ep.area||ms.strong.length||ms.spec.length||ms.watch||ms.tv.length||ms.noScale);
+    ms.last=(ms.wpn&&ms.wpn.last)||N(j.last_price)||null;return ms}
+  /* location evidence for the trade card. x={dir,entry,stop,tp1,tick,minRR} -> rule items like stratRules */
+  function checks(ms,x){var out=[];if(!ms||!ms.has||!x||!x.entry||!x.stop||!x.dir)return out;var long=x.dir==="long",sg=long?1:-1,R=Math.abs(x.entry-x.stop),tol=Math.max(R*0.5,(x.tick||.25)*4),e=x.entry,F=x.fmt||function(v){return v};
+    var live=function(z){return !/invalid|mitigat/.test(z.status||"")};
+    var all=ms.obs.filter(live).map(function(o){return {u:o.u,l:o.l,side:o.side,lab:(o.side==="bull"?"bullish":"bearish")+" order block "+F(o.l)+"–"+F(o.u)}}).concat(ms.zones.map(function(z){var sd=/demand|discount/.test(z.kind)?"bull":/supply|premium/.test(z.kind)?"bear":null;return {u:z.u,l:z.l,side:sd,kind:z.kind,lab:"zone #"+z.rank+" "+z.kind+" "+F(z.l)+"–"+F(z.u)}}));
+    var mine=long?"bull":"bear",opp=long?"bear":"bull";
+    var at=all.filter(function(z){return (z.side===mine||(!z.side&&/sr|ob|fvg|liquidity|bos|choch/.test(z.kind||"")))&&e>=z.l-tol&&e<=z.u+tol})[0];
+    if(at)out.push({id:"ms_loc",c:"ok",t:"Market structure: entry is at the "+at.lab+"."});
+    var inOpp=all.filter(function(z){return z.side===opp&&e>z.l&&e<z.u})[0];
+    if(inOpp)out.push({id:"ms_inopp",c:"meh",t:"Market structure: entry is inside the opposite "+inOpp.lab+"."});
+    if(x.tp1){var blk=all.filter(function(z){if(z.side!==opp)return false;var edge=long?z.l:z.u;return sg*(edge-e)>tol/2&&sg*(x.tp1-edge)>(x.tick||.25)/2}).sort(function(a,b){return long?a.l-b.l:b.u-a.u})[0];
+      if(blk){var edge=long?blk.l:blk.u,r=sg*(edge-e)/R;out.push({id:"ms_block",c:r<1?"bad":"meh",t:"Market structure: price runs into the "+blk.lab+" at "+r.toFixed(2)+"R, before TP1."+(r<1?" Less than 1R of room.":" Consider a partial there.")})}}
+    if(/conflict/i.test(ms.agree||""))out.push({id:"ms_tf",c:"meh",t:"Timeframes conflict in the market-structure read ("+ms.agree+")."});
+    if(ms.wpn&&/^extended$/.test(ms.wpn.ext))out.push({id:"ms_ext",c:"meh",t:"Price is extended from the entry area (chasing)."});
+    return out}
+  function tvText(ms,F){F=F||function(v){return v};return ms.tv.map(function(t){return F(t.price)+"  "+t.label}).join("\n")+"\n\nPlain list:\n"+ms.tv.map(function(t){return F(t.price)}).join("\n")}
+  function text(ms,F){if(!ms||!ms.has)return "";var L=[],w=ms.wpn;
+    L.push("WHERE PRICE IS NOW: "+(w?[w.last?"last close "+F(w.last):"",w.structure,w.dir,w.phase,w.near?"near "+w.near:"",w.pd,w.ext].filter(Boolean).join(" · "):ms.wpnText||"not provided"));
+    if(ms.zones.length)L.push("ZONES: "+ms.zones.map(function(z){return "#"+z.rank+" "+z.kind+" "+F(z.l)+"–"+F(z.u)+(z.relation?" ("+z.relation+")":"")}).join(" | "));
+    if(ms.agree)L.push("TF AGREEMENT: "+ms.agree);if(ms.watch)L.push("WATCH NEXT: "+ms.watch);if(ms.noScale)L.push("CHART READ: price scale missing or unreadable — send a clearer screenshot.");return L.join("\n")}
+  var NP='<span class="ms-np">not provided</span>';
+  function html(ms,o){o=o||{};var F=o.fmt||function(v){return v};if(!ms||!ms.has)return '<details class="ms ms-c"><summary><b>Market structure</b> <span class="ms-np">— not in this paste. Use “Copy analysis prompt” so Claude adds it.</span></summary></details>';
+    var w=ms.wpn,last=ms.last,li=function(k,v){return '<li><b>'+k+':</b> '+(v?esc(v):NP)+'</li>'};
+    var h='<details class="ms'+(o.full?' ms-full':' ms-c')+'"'+(o.full?' open':'')+'><summary><b>Market structure</b>'+(o.full?'':' <span class="ms-np">(tap to open)</span>')+'</summary>';
+    h+='<div class="ms-now"><h4>WHERE PRICE IS NOW</h4>'+(w?'<ul class="ms-l">'+li("Last close",w.last?F(w.last):"")+li("Structure",w.structure)+li("Direction",w.dir)+li("Phase",w.phase)+li("Near",w.near)+li("Premium / discount",w.pd)+li("Extended",w.ext)+'</ul>':"")+(ms.wpnText?'<p>'+esc(ms.wpnText)+'</p>':"")+(!w&&!ms.wpnText?'<p>'+NP+'</p>':"")+'</div>';
+    if(ms.noScale)h+='<div class="sc-miss"><b>Chart not fully readable.</b> The analysis says the price scale is missing or blurry. Send a clearer screenshot with the price axis visible'+(ms.missing.length?' (missing: '+esc(ms.missing.join(", "))+')':'')+'. Treat as WAIT.</div>';
+    var ob=function(sd,t){var a=ms.obs.filter(function(o){return o.side===sd});return '<h4>'+t+'</h4>'+(a.length?'<table class="ms-t"><tr><th>Lower–Upper</th><th>Status</th><th>Price</th><th>Why / confirmation</th></tr>'+a.map(function(o){return '<tr'+(/invalid|mitigat/.test(o.status)?' class="ms-dim"':'')+'><td>'+F(o.l)+'–'+F(o.u)+'</td><td>'+esc(o.status||"—")+'</td><td>'+esc(o.inter||"—")+'</td><td>'+esc(o.reason)+(o.conf?' · '+esc(o.conf):'')+'</td></tr>'}).join("")+'</table>':'<p>'+NP+'</p>')};
+    h+=ob("bull","Bullish order blocks")+ob("bear","Bearish order blocks");
+    h+='<h4>Pivots</h4>'+(ms.pivots.length?'<ul class="ms-l">'+ms.pivots.map(function(p){return '<li>'+(p.type==="high"?"High ":"Low ")+F(p.price)+' · '+(p.major?"major":"minor")+' · '+(p.confirmed?"confirmed":"developing")+(p.equal?' · equal '+p.type+'s ('+(p.type==="high"?"buy":"sell")+'-side liquidity)':'')+'</li>'}).join("")+'</ul>':'<p>'+NP+'</p>');
+    h+='<h4>Key zones (ranked)</h4>'+(ms.zones.length?'<table class="ms-t"><tr><th>#</th><th>Kind</th><th>Lower–Upper</th><th>Price is</th><th>Why</th></tr>'+ms.zones.map(function(z){var r=z.relation||(last?{below:"above it",above:"below it",inside:"inside"}[rel(z,last)]:"");return '<tr><td>'+z.rank+'</td><td>'+esc(z.kind)+'</td><td>'+F(z.l)+(z.l!==z.u?'–'+F(z.u):'')+'</td><td>'+esc(r||"—")+'</td><td>'+esc(z.reason)+'</td></tr>'}).join("")+'</table>':'<p>'+NP+'</p>');
+    h+='<h4>Liquidity</h4>'+(ms.liq.length?'<ul class="ms-l">'+ms.liq.map(function(x){return '<li>'+esc(x.side)+' '+F(x.l)+(x.l!==x.u?'–'+F(x.u):'')+(x.reason?' · '+esc(x.reason):'')+'</li>'}).join("")+'</ul>':'<p>'+NP+'</p>');
+    h+='<h4>Timeframes</h4>'+(ms.tfs.length?'<ul class="ms-l">'+ms.tfs.map(function(t){return '<li><b>'+esc(t.tf)+'</b> ('+esc(t.role||"?")+'): '+esc(t.trend||"—")+(t.notes?' · '+esc(t.notes):'')+'</li>'}).join("")+'</ul>':'')+'<p><b>Agreement:</b> '+(ms.agree?esc(ms.agree):NP)+'</p>';
+    h+='<h4>Scenarios</h4><ul class="ms-l">'+li("Bullish",ms.sc.bull)+li("Bearish",ms.sc.bear)+li("No trade",ms.sc.none)+'</ul>';
+    h+='<h4>Entry plan (from the analysis)</h4><ul class="ms-l">'+li("Area",ms.ep.area)+li("Confirmation",ms.ep.conf)+li("Invalidation",ms.ep.inval)+li("Stop",ms.ep.stop?F(ms.ep.stop):"")+li("Targets",ms.ep.targets.map(F).join(", "))+'</ul>';
+    h+='<h4>Confidence</h4><ul class="ms-l"><li><b>Facts / strong:</b> '+(ms.strong.length?esc(ms.strong.join("; ")):NP)+'</li><li><b>Interpretation / speculative:</b> '+(ms.spec.length?esc(ms.spec.join("; ")):NP)+'</li></ul>';
+    h+='<p><b>Watch next:</b> '+(ms.watch?esc(ms.watch):NP)+'</p>';
+    h+='<h4>TradingView levels</h4>'+(ms.tv.length?'<pre class="ms-tv">'+esc(tvText(ms,F))+'</pre>'+(ms.tvDerived?'<p class="ms-np">Built from the zones/OBs/pivots above (Claude gave no tv_levels list).</p>':'')+'<div class="sc-btns"><button type="button" data-ms="tv">Copy TradingView levels</button></div>':'<p>'+NP+'</p>');
+    return h+'</details>'}
+  var CSS='.ms{border:1px solid rgba(128,128,128,.4);border-radius:12px;padding:8px 12px;margin:10px 0;font-size:14px;line-height:1.4}.ms summary{cursor:pointer;min-height:32px;display:flex;align-items:center;gap:6px}.ms-full{border-width:2px;font-size:15px}'+
+   '.ms h4{margin:10px 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.8}.ms-now{border-left:4px solid #3a7bd5;padding:4px 10px;margin:6px 0;background:rgba(58,123,213,.08);border-radius:4px}.ms-now h4{margin-top:2px;font-size:14px;opacity:1}'+
+   '.ms-l{margin:4px 0;padding-left:18px}.ms-l li{margin:2px 0}.ms-np{opacity:.6;font-style:italic;font-size:13px}.ms-t{border-collapse:collapse;width:100%;font-size:13px;display:block;overflow-x:auto}.ms-t th,.ms-t td{border-bottom:1px solid rgba(128,128,128,.25);padding:3px 6px;text-align:left;vertical-align:top}.ms-dim{opacity:.5}'+
+   '.ms-tv{white-space:pre-wrap;font-size:13px;border:1px solid rgba(128,128,128,.3);border-radius:6px;padding:6px 8px;margin:4px 0;max-height:220px;overflow:auto}.ms-pbar{margin:6px 0}.ms-pbar button{min-height:34px;padding:4px 12px;border-radius:8px;border:1px solid rgba(128,128,128,.5);background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer}';
+  function copy(s){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(s).catch(function(){fb(s)});fb(s);return Promise.resolve()}
+  function fb(s){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
+  function flash(b,t){var o=b.textContent;b.textContent=t;setTimeout(function(){b.textContent=o},1500)}
+  if(typeof document!=="undefined"){var ad=function(){if(document.getElementById("ms-css"))return;var st=document.createElement("style");st.id="ms-css";st.textContent=CSS;(document.head||document.documentElement).appendChild(st)};if(document.head)ad();else document.addEventListener("DOMContentLoaded",ad);
+    document.addEventListener("click",function(e){var b=e.target&&e.target.closest&&e.target.closest("[data-ms]");if(!b)return;var k=b.getAttribute("data-ms");
+      if(k==="tv"){var c=g.__stratCard&&g.__stratCard.card;if(c&&c.ms){copy(c.msTV||"");flash(b,"Copied ✓")}}
+      else if(k==="prompt"){var s=g.stratReaderPrompt?g.stratReaderPrompt():prompt({inst:b.getAttribute("data-inst")||""});g.__stratLastPrompt=s;copy(s);flash(b,"Prompt copied ✓")}})}
+  g.stratMS={parse:parse,checks:checks,html:html,text:text,tvText:tvText,prompt:prompt,format:format,schema:SCHEMA};
+})(typeof window!=="undefined"?window:globalThis);
+</script>
 <script id="strat-card">
 /* STRAT-CARD shared v2 (identical in Strat Dashboard, Strat Chart Reader, Strat Command, Trade Risk Check).
    One engine: parse the pasted analysis -> Strat structure -> rules + risk -> one trade card.
@@ -370,6 +478,13 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
     (Array.isArray(j.missing)?j.missing:[]).forEach(function(x){x=String(x).trim();if(x&&missing.indexOf(x)<0&&missing.length<10)missing.push(x)});
     var rules=g.stratRules?g.stratRules({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty,maxRisk:maxRisk,minRR:minRR,maxStopPts:RULES.maxStopPts,claude:c,lastPrice:p.last,trigger:p.tb}):{items:[],fails:0,warns:0};
     var tps=g.stratTPs?g.stratTPs({dir:p.dir,entry:p.entry,stop:p.stop,targets:p.targets,pv:I?I.pv:null,tick:I?I.t:.25,qty:qty}):{need:true,rows:[]};
+    /* market-structure layer: Location evidence only, from parsed analysis levels */
+    var ms=g.stratMS?g.stratMS.parse(j,p.raw):null;if(ms&&!ms.last&&p.last)ms.last=p.last;
+    if(ms&&ms.has){var mi=g.stratMS.checks(ms,{dir:p.dir,entry:p.entry,stop:p.stop,tp1:tps.rows&&tps.rows[0]?tps.rows[0].price:null,tick:I?I.t:.25,minRR:minRR,fmt:function(v){return fmtP(v,I)}});
+      var lvI=rules.items.filter(function(x){return x.id==="level"})[0],okLoc=mi.filter(function(x){return x.id==="ms_loc"})[0];
+      if(okLoc&&lvI&&lvI.c!=="ok"){lvI.c="ok";lvI.t=okLoc.t.replace("Market structure: entry","Setup");mi=mi.filter(function(x){return x!==okLoc})}else if(okLoc&&!lvI)okLoc.id="level";
+      rules.items=rules.items.concat(mi);
+      if(ms.noScale&&missing.indexOf("a readable price scale (clearer screenshot)")<0)missing.unshift("a readable price scale (clearer screenshot)")}
     var need=!p.entry||!p.stop||!p.dir,fails=rules.items.filter(function(x){return x.c==="bad"}),warns=rules.items.filter(function(x){return x.c==="meh"}),oks=rules.items.filter(function(x){return x.c==="ok"});
     var noTrade=need||fails.length>0,long=p.dir==="long";
     var ot=String(j.order_type||c.orderType||(String(c.entryText||"").match(/\b(buy|sell)\s+(stop|limit)\b/i)||[""])[0]||"").toLowerCase(),order;
@@ -382,7 +497,7 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
       warns.length<=2?{k:"mod",t:"Moderate evidence",why:"Rules pass, but check: "+warns.map(function(x){return x.t}).join(" ")}:{k:"weak",t:"Weak evidence",why:warns.length+" cautions: "+warns.map(function(x){return x.t}).slice(0,3).join(" ")};
     var inval=j.invalidation?String(j.invalidation):p.stop&&p.dir?(long?"Price trading below ":"Price trading above ")+fmtP(p.stop,I)+" (your stop) cancels the setup."+(j.alt_scenario?" "+j.alt_scenario:""):"Need a stop to define invalidation.";
     var sugs=suggest(p,I,{R:R,perC:perC,maxQty:maxQty,maxRisk:maxRisk,minRR:minRR,tps:tps,planQty:Math.floor(NUM(opts.planQty)||0)});
-    return {v:1,minRR:minRR,sugs:sugs,ov:ov,sym:p.sym,symAssumed:p.symAssumed,tf:p.tf,dir:p.dir,direction:need?"NO TRADE":noTrade?"NO TRADE":long?"BUY":"SELL",caution:!noTrade&&warns.length>0,
+    return {v:1,ms:ms,msTV:ms&&ms.tv&&ms.tv.length&&g.stratMS?g.stratMS.tvText(ms,function(v){return fmtP(v,I)}):"",minRR:minRR,sugs:sugs,ov:ov,sym:p.sym,symAssumed:p.symAssumed,tf:p.tf,dir:p.dir,direction:need?"NO TRADE":noTrade?"NO TRADE":long?"BUY":"SELL",caution:!noTrade&&warns.length>0,
       entry:p.entry,stop:p.stop,stopReason:String(j.stop_reason||c.stopText||"").slice(0,140),order:order,trigger:NUM(j.trigger_price),risk:{pts:R,perC:perC,maxQty:maxQty,qty:qty,total:perC?perC*qty:null,maxRisk:maxRisk},
       rr:tps.rows&&tps.rows[0]?tps.rows[0].r:null,tps:tps,rules:rules,fails:fails,warns:warns,oks:oks,conf:conf,invalidation:inval,missing:missing,claudeCall:c.verdict||null,
       structure:{candles:(c.sequence||[]).slice(-5),pattern:setup||"",scenario:scen,ftfc:ftfcTxt,pdh:p.pdh,pdl:p.pdl,pwh:p.pwh,pwl:p.pwl,levels:(c.levels||[]).slice(0,6),trend:c.trend||"",momentum:String(j.momentum||(j.market_structure&&j.market_structure.note)||""),location:c.location||"",last:p.last},
@@ -419,6 +534,7 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
     L.push("INVALIDATION: "+k.invalidation);
     if(k.direction==="NO TRADE")L.push("NO-TRADE WARNING: "+(k.fails.length?k.fails.map(function(x){return x.t}).join(" "):"Missing: "+k.missing.join(", ")));
     if(k.missing.length)L.push("MISSING INFO: "+k.missing.join(", "));
+    if(k.ms&&k.ms.has&&g.stratMS)L.push(g.stratMS.text(k.ms,function(v){return fmtP(v,I)}));
     L.push("For review only — no live data, no orders placed.");return L.join("\n")}
   var CSS='.scard{border:2px solid rgba(128,128,128,.4);border-radius:12px;padding:12px 14px;margin:10px 0;font-size:15px;line-height:1.4}.scard h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.75}'+
    '.sc-dir{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:28px;font-weight:800;letter-spacing:.02em;margin-bottom:8px}.sc-dir small{font-size:13px;font-weight:600;opacity:.8}.scard.buy{border-color:#1f9d55}.scard.buy .sc-dir b{color:#1f9d55}.scard.sell{border-color:#d64545}.scard.sell .sc-dir b{color:#d64545}.scard.none{border-color:#8a8a8a}.scard.none .sc-dir b{color:#8a8a8a}'+
@@ -447,7 +563,8 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
         (S.levels.length?'<li><b>Key levels:</b> '+S.levels.map(function(x){return esc(x.label)+" "+fmtP(x.price,I)}).join(" · ")+'</li>':"")+'<li><b>Trend:</b> '+esc(S.trend||"not given")+(S.momentum?" · "+esc(S.momentum):"")+'</li><li><b>Location:</b> '+esc(S.location||"not given")+'</li>'+lv("Last price",S.last)+'</ul></details>';
       h+='<details class="sc-sec" open><summary><b>2 · Validation &amp; risk</b> (Trade Risk Check)</summary><ul class="sc-l">'+k.rules.items.filter(function(x){return !x.hide}).map(function(x){return "<li>"+(x.c==="ok"?"✓ ":x.c==="bad"?"✕ ":"! ")+esc(x.t)+"</li>"}).join("")+'</ul></details>';
       h+='<details class="sc-sec" open><summary><b>3 · Plan</b> (Command)</summary><ul class="sc-l"><li>'+(k.direction==="NO TRADE"?"No order. Wait for a setup that meets the rules.":esc(k.order)+" at "+fmtP(k.entry,I)+", stop "+fmtP(k.stop,I)+", up to "+k.risk.maxQty+" contract"+(k.risk.maxQty>1?"s":"")+" (risk "+usd(k.risk.total)+").")+'</li>'+(k.direction==="NO TRADE"?"":"<li>Cancel the order if the trigger bar closes without breaking.</li>")+'<li>'+esc(k.invalidation)+'</li></ul></details>'}
-    h+='<div class="sc-btns"><button type="button" data-sc="copy">Copy card</button>'+(o.handoff!==false?'<button type="button" data-sc="send">Copy for other app</button>':"")+'</div><p class="sc-foot">For review only — no live data, no orders placed.</p></div>';return h}
+    h+='<div class="sc-btns"><button type="button" data-sc="copy">Copy card</button>'+(o.handoff!==false?'<button type="button" data-sc="send">Copy for other app</button>':"")+'</div><p class="sc-foot">For review only — no live data, no orders placed.</p></div>';
+    if(g.stratMS&&o.ms!==false)h+=g.stratMS.html(k.ms,{full:!!o.sections,fmt:function(v){return fmtP(v,I)}});return h}
   /* ---------- handoff between the apps ---------- */
   var KEY="strat-handoff-v1",bc=null;try{bc=new BroadcastChannel("strat-handoff")}catch(e){}
   function save(t,from){t=String(t||"").replace(HDR,"");if(t.trim().length<40)return;var o={text:t,from:from,at:Date.now()};try{localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}try{bc&&bc.postMessage(o)}catch(e){}}
@@ -456,7 +573,7 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
   function fb(s){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
   /* mount: {box, target, from, opts(), before(), sections} */
   function mount(m){if(typeof document==="undefined")return;if(!document.getElementById("scard-css")){var st=document.createElement("style");st.id="scard-css";st.textContent=CSS;(document.head||document.documentElement).appendChild(st)}
-    var box=document.querySelector(m.box),tgt=document.querySelector(m.target);if(!box||!tgt)return;var bar=document.createElement("div");bar.className="sc-hand";bar.hidden=true;tgt.parentNode.insertBefore(bar,tgt);var out=document.createElement("div");tgt.appendChild(out);var last="",timer=null,st={ov:{},hist:[],chg:[],ign:{}};
+    var box=document.querySelector(m.box),tgt=document.querySelector(m.target);if(!box||!tgt)return;var bar=document.createElement("div");bar.className="sc-hand";bar.hidden=true;tgt.parentNode.insertBefore(bar,tgt);var pb=document.createElement("div");pb.className="ms-pbar";pb.innerHTML='<button type="button" data-ms="prompt">Copy analysis prompt</button>';tgt.appendChild(pb);pb.querySelector("button").setAttribute("data-inst",(m.opts&&m.opts().inst)||"");var out=document.createElement("div");tgt.appendChild(out);var last="",timer=null,st={ov:{},hist:[],chg:[],ign:{}};
     function render(force){var t=box.value;if(t===last&&!force)return;if(t!==last)st={ov:{},hist:[],chg:[],ign:{}};last=t;if(t.trim().length<40){out.innerHTML="";g.__stratCard=null;return}
       var o=Object.assign({},m.opts?m.opts():{},{ov:st.ov});if(st.ov.planQty)o.planQty=st.ov.planQty;var k=build(t,o);g.__stratCard={card:k,text:text(k),base:Object.keys(st.ov).length?null:text(k)};out.innerHTML=html(k,{sections:m.sections,handoff:m.handoff,changed:st.chg,ignored:st.ign});}
     g.__stratCardRender=function(){render(true)};
@@ -480,6 +597,119 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
     setTimeout(function(){if(!box.value.trim())offer(load());render()},300);
     g.__stratCardUse=use;}
   g.stratCard=build;g.stratCardHTML=html;g.stratCardText=text;g.stratCardMount=mount;g.stratHandoff={save:save,load:load};g.STRAT_LIMITS=RULES;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="strat-size">
+
+/* STRAT-SIZE shared v1 (identical in Strat Dashboard, Strat Chart Reader, Strat Command, Trade Risk Check).
+   Contract plan: how many contracts fit the max risk, and how many come off at TP1, TP2, TP3, TP4 and as runners.
+   Math only: it reads the entry, stop and targets already in the app (or typed here). It never invents chart levels. */
+(function(g){
+  var INST={MES:{pv:5,t:.25},MNQ:{pv:2,t:.25},MGC:{pv:10,t:.1},M2K:{pv:5,t:.1},MYM:{pv:.5,t:1},MCL:{pv:100,t:.01},SIL:{pv:1000,t:.005},ES:{pv:50,t:.25},NQ:{pv:20,t:.25},GC:{pv:100,t:.1},RTY:{pv:50,t:.1},YM:{pv:5,t:1},CL:{pv:1000,t:.01}};
+  var SYMRE=/\b(MNQ|MES|MGC|M2K|MYM|MCL|SIL|NQ|ES|GC|RTY|YM|CL)\b/;
+  var NUM=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)&&n>0?n:null};
+  var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+  var usd=function(v){return v==null?"—":(v<0?"-":"")+"$"+Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})};
+  var ORDER={front:[0,1,0,1,2,3,2,3],even:[0,1,2,3]};
+  /* q contracts -> [TP1,TP2,TP3,TP4,runners]. Runners: 2 when 6+ contracts, 1 when 2-5, none with 1. */
+  function split(q,layout){q=Math.max(0,Math.floor(q||0));var out=[0,0,0,0,0];if(!q)return out;
+    var r=q>=6?2:q>=2?1:0,n=q-r,seq=ORDER[layout]||ORDER.front;
+    for(var i=0;i<n;i++)out[i<seq.length?seq[i]:(i-seq.length)%4]++;
+    out[4]=r;return out}
+  /* o: {entry, stop, pv, tick, maxRisk, want, layout, targets[]} */
+  function plan(o){
+    var e=NUM(o.entry),s=NUM(o.stop),pv=NUM(o.pv),maxRisk=NUM(o.maxRisk)||200,want=Math.max(1,Math.floor(NUM(o.want)||7));
+    if(e==null||s==null||e===s||!pv)return {need:true};
+    var sg=s<e?1:-1,R=Math.abs(e-s),perC=R*pv,maxQty=Math.floor(maxRisk/perC+1e-9),qty=Math.min(want,maxQty);
+    var tick=NUM(o.tick)||.25,dec=Math.max(2,(String(tick).split(".")[1]||"").length);
+    var rt=function(p){return +(Math.round(p/tick)*tick).toFixed(dec)};
+    var seen={},rows=[];(o.targets||[]).forEach(function(x){var v=NUM(x);if(v==null||sg*(v-e)<=0||Math.abs(v-e)>e*.1||seen[v])return;seen[v]=1;rows.push({price:v,src:"a"})});
+    rows.sort(function(a,b){return sg*(a.price-b.price)});rows=rows.slice(0,4);
+    var step=rows.length?Math.floor(sg*(rows[rows.length-1].price-e)/R+1e-9)+1:1;
+    while(rows.length<4){rows.push({price:rt(e+sg*step*R),src:"r"});step++}
+    var sp=split(Math.max(qty,0),o.layout),tot=0;
+    rows.forEach(function(x,i){x.n=i+1;x.c=sp[i];x.pts=sg*(x.price-e);x.r=x.pts/R;x.profit=x.c*x.pts*pv;tot+=x.profit});
+    return {need:false,dir:sg>0?"long":"short",sg:sg,entry:e,stop:s,R:R,pv:pv,perC:perC,maxRisk:maxRisk,want:want,maxQty:maxQty,qty:qty,risk:qty*perC,split:sp,rows:rows,total:tot,dec:dec,
+      be:e,cut:want>maxQty,none:maxQty<1,weak:rows[0].r<1-1e-9};
+  }
+  function text(p){if(!p||p.need)return "";if(p.none)return "CONTRACT PLAN: no size fits. 1 contract risks "+usd(p.perC)+", over "+usd(p.maxRisk)+".";
+    return "CONTRACT PLAN: trade "+p.qty+" (risk "+usd(p.risk)+" of "+usd(p.maxRisk)+") · TP1 "+p.split[0]+" · TP2 "+p.split[1]+" · TP3 "+p.split[2]+" · TP4 "+p.split[3]+" · Runners "+p.split[4]}
+  function html(p){
+    if(!p||p.need)return '<p class="ssz-need">Enter an entry price and a stop-loss price to see the contract plan.</p>';
+    var F=function(v){return (+v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:p.dec})},pt=function(v){return (p.sg>0?"+":"−")+(+v.toFixed(2))};
+    var h='<div class="ssz-w"><table class="ssz-t"><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody>'+
+      '<tr><td>Direction</td><td>'+(p.dir==="long"?"Long (buy)":"Short (sell)")+'</td></tr>'+
+      '<tr><td>Stop size</td><td>'+(+p.R.toFixed(2))+' points</td></tr>'+
+      '<tr><td>Risk per contract</td><td>'+usd(p.perC)+'</td></tr>'+
+      '<tr><td>Most contracts your '+usd(p.maxRisk)+' limit allows</td><td>'+p.maxQty+'</td></tr>'+
+      '<tr class="ssz-big"><td>Contracts to trade</td><td>'+(p.none?"0 — NO TRADE AT THIS STOP":p.qty)+'</td></tr>'+
+      '<tr><td>Dollar risk</td><td>'+(p.none?"—":usd(p.risk)+" of "+usd(p.maxRisk))+'</td></tr></tbody></table></div>';
+    if(p.none)return h+'<p class="ssz-bad">Even 1 contract risks '+usd(p.perC)+', over your '+usd(p.maxRisk)+' limit. Skip it, use the micro contract, or wait for a smaller signal candle. Do not squeeze the stop.</p>';
+    if(p.cut)h+='<p class="ssz-warn">'+p.want+' contracts would risk '+usd(p.want*p.perC)+', over your '+usd(p.maxRisk)+' limit, so the plan is cut to '+p.qty+'.</p>';
+    h+='<div class="ssz-w"><table class="ssz-t ssz-s"><thead><tr><th>Exit</th><th>Contracts</th><th>Price</th><th>Points</th><th>Profit</th><th>Where the price comes from</th></tr></thead><tbody>';
+    p.rows.forEach(function(x){h+='<tr'+(x.c?"":' class="ssz-off"')+'><td>TP'+x.n+'</td><td><b>'+x.c+'</b></td><td>'+F(x.price)+'</td><td>'+pt(x.pts)+' ('+x.r.toFixed(1)+'R)</td><td>'+(x.c?usd(x.profit):"—")+'</td><td>'+(x.src==="a"?"Your target":"Math only (check chart)")+'</td></tr>'});
+    h+='<tr'+(p.split[4]?"":' class="ssz-off"')+'><td>Runners</td><td><b>'+p.split[4]+'</b></td><td>No fixed price</td><td>—</td><td>'+(p.split[4]?"Open":"—")+'</td><td>Trail the stop; exit at the next big level</td></tr>';
+    h+='<tr class="ssz-big"><td>Total</td><td>'+p.qty+'</td><td></td><td></td><td>'+usd(p.total)+(p.split[4]?" + runners":"")+'</td><td>If every take profit fills</td></tr></tbody></table></div>';
+    if(p.weak)h+='<p class="ssz-warn">TP1 is closer than your stop (under 1R). One full loss would wipe out several TP1 wins.</p>';
+    h+='<div class="ssz-w"><table class="ssz-t"><thead><tr><th>When</th><th>Move the stop to</th></tr></thead><tbody>'+
+      '<tr><td>Start</td><td>'+F(p.stop)+' (all '+p.qty+' contracts)</td></tr>'+
+      '<tr><td>After TP1 fills</td><td>'+F(p.be)+' (breakeven)</td></tr>'+
+      (p.split[1]?'<tr><td>After TP2 fills</td><td>'+F(p.rows[0].price)+' (the TP1 price)</td></tr>':"")+
+      (p.split[4]?'<tr><td>Runners</td><td>Trail behind each new candle '+(p.sg>0?"low":"high")+'</td></tr>':"")+
+      '<tr><td>Every fill</td><td>Lower the stop order quantity to the contracts still open</td></tr></tbody></table></div>';
+    return h}
+  var CSS='.ssz{border:2px solid rgba(128,128,128,.45);border-radius:12px;padding:12px 14px;margin:12px 0;font-size:15px;line-height:1.4;min-width:0;grid-column:1/-1}'+
+    '.ssz h3{margin:0 0 2px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;font-weight:700}.ssz-sub{margin:0 0 10px;font-size:13px;opacity:.75}'+
+    '.ssz-in{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px}.ssz-in label{display:flex;flex-direction:column;gap:3px;font-size:12px;opacity:.9;min-width:0}'+
+    '.ssz-in input,.ssz-in select{font:inherit;font-size:15px;min-height:38px;width:100%;min-width:0;padding:4px 8px;border-radius:7px;border:1px solid rgba(128,128,128,.55);background:transparent;color:inherit}.ssz-in select option{color:#111;background:#fff}'+
+    '.ssz-w{overflow-x:auto;max-width:100%;margin:8px 0}.ssz-t{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.4)}'+
+    '.ssz-t th,.ssz-t td{padding:6px 9px;border:1px solid rgba(128,128,128,.3);text-align:left;white-space:nowrap}.ssz-t th{font-size:12px;font-weight:700;background:rgba(128,128,128,.14)}'+
+    '.ssz-t td:last-child{white-space:normal}.ssz-s{min-width:520px}.ssz-s td:nth-child(2){font-size:17px;text-align:center}.ssz-off td{opacity:.5}.ssz-big td{font-weight:800;font-size:16px;background:rgba(128,128,128,.1)}'+
+    '.ssz-warn,.ssz-bad{margin:8px 0;padding:6px 10px;border-radius:5px;font-size:14px;border-left:4px solid #d9a400;background:rgba(217,164,0,.12)}.ssz-bad{border-left-color:#d64545;background:rgba(214,69,69,.1);font-weight:600}'+
+    '.ssz-need,.ssz-foot{margin:6px 0 0;font-size:13px;opacity:.75}.ssz-link{font-size:13px;display:flex;gap:6px;align-items:center;margin:0 0 8px}.ssz-link input{width:18px;height:18px}';
+  /* where each app keeps its own numbers */
+  var SRC={entry:["pEntry","rEntry","entry"],stop:["pStop","rStop","sl"],inst:["inst","rInst","sym","dInst"],risk:["risk","rMax","maxRisk","dRisk"],tps:["pT1","pT2","pT3","rT1","rT2","tp","stratTarget"]};
+  function mount(){
+    if(typeof document==="undefined"||document.getElementById("ssz"))return;
+    var $=function(i){return document.getElementById(i)},a,where="beforebegin";
+    if((a=$("ticketCard"))){}else if($("checks")&&$("checks").closest&&(a=$("checks").closest(".two"))){}else if($("rChecks")&&(a=$("rChecks").closest(".adj"))){}else if((a=$("dCard"))){}else if((a=$("sCard"))){where="afterend"}else return;
+    var st=document.createElement("style");st.id="ssz-css";st.textContent=CSS;(document.head||document.documentElement).appendChild(st);
+    var box=document.createElement("section");box.id="ssz";box.className="ssz";box.setAttribute("aria-label","Contract plan");
+    box.innerHTML='<h3>Contract plan</h3><p class="ssz-sub">How many contracts to trade, and how many come off at each take profit.</p>'+
+      '<label class="ssz-link"><input type="checkbox" id="sszLink" checked> Use the entry, stop and targets from this app</label>'+
+      '<div class="ssz-in"><label>Contract<select id="sszInst">'+Object.keys(INST).map(function(k){return "<option>"+k+"</option>"}).join("")+'<option value="custom">Other</option></select></label>'+
+      '<label>$ per point<input id="sszPv" type="number" min="0" step="any" inputmode="decimal"></label>'+
+      '<label>Entry<input id="sszEntry" type="number" step="any" inputmode="decimal" placeholder="e.g. 7832"></label>'+
+      '<label>Stop loss<input id="sszStop" type="number" step="any" inputmode="decimal" placeholder="e.g. 7827"></label>'+
+      '<label>Max risk ($)<input id="sszRisk" type="number" min="1" step="5" inputmode="decimal" value="200"></label>'+
+      '<label>Contracts I want<input id="sszWant" type="number" min="1" step="1" inputmode="numeric" value="7"></label>'+
+      '<label>Split<select id="sszLay"><option value="front">2 · 2 · 1 + runners</option><option value="even">Spread over TP1–TP4 + runners</option></select></label></div>'+
+      '<div id="sszOut" aria-live="polite"></div><p class="ssz-foot">Sizing math only. The stop and targets must come from the chart. No orders are placed.</p>';
+    a.insertAdjacentElement(where,box);
+    var KEY="strat-size-v1",cfg={};try{cfg=JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch(e){}
+    if(cfg.want)$("sszWant").value=cfg.want;if(cfg.lay)$("sszLay").value=cfg.lay;if(cfg.link===false)$("sszLink").checked=false;
+    if(cfg.inst)$("sszInst").value=cfg.inst;if(cfg.risk)$("sszRisk").value=cfg.risk;if(cfg.entry)$("sszEntry").value=cfg.entry;if(cfg.stop)$("sszStop").value=cfg.stop;
+    var setPv=function(){var I=INST[$("sszInst").value];if(I)$("sszPv").value=I.pv;else if(cfg.pv&&!$("sszPv").value)$("sszPv").value=cfg.pv};setPv();
+    var val=function(ids){for(var i=0;i<ids.length;i++){var el=$(ids[i]);if(el&&el.offsetParent!==null||el&&el.type==="hidden"){var v=NUM(el.value);if(v!=null)return v}}for(i=0;i<ids.length;i++){el=$(ids[i]);if(el){v=NUM(el.value);if(v!=null)return v}}return null};
+    var symOf=function(){for(var i=0;i<SRC.inst.length;i++){var el=$(SRC.inst[i]);if(!el)continue;var t=String(el.value||"")+" "+(el.options&&el.selectedIndex>=0?el.options[el.selectedIndex].text:""),m=t.toUpperCase().match(SYMRE);if(m)return m[1]}return null};
+    function appState(){var k=g.__stratCard&&g.__stratCard.card,o={entry:val(SRC.entry),stop:val(SRC.stop),sym:symOf(),risk:val(SRC.risk),tps:[]};
+      SRC.tps.forEach(function(id){var el=$(id),v=el?NUM(el.value):null;if(v!=null)o.tps.push(v)});
+      if(k&&k.entry&&k.stop){if(o.entry==null||o.stop==null){o.entry=k.entry;o.stop=k.stop}if(k.sym)o.sym=o.sym&&$("dInst")==null?o.sym:k.sym;
+        if(k.entry===o.entry&&k.stop===o.stop&&k.tps&&k.tps.rows)k.tps.rows.forEach(function(x){if(x.src==="a")o.tps.push(x.price)})}
+      return o}
+    var lastSig="",tps=[];
+    function render(){var I=INST[$("sszInst").value],p=plan({entry:$("sszEntry").value,stop:$("sszStop").value,pv:$("sszPv").value,tick:I?I.t:null,maxRisk:$("sszRisk").value,want:$("sszWant").value,layout:$("sszLay").value,targets:$("sszLink").checked?tps:[]});
+      $("sszOut").innerHTML=html(p);g.__stratSize={plan:p,text:text(p)};
+      try{localStorage.setItem(KEY,JSON.stringify({want:$("sszWant").value,lay:$("sszLay").value,link:$("sszLink").checked,inst:$("sszInst").value,pv:$("sszPv").value,risk:$("sszRisk").value,entry:$("sszEntry").value,stop:$("sszStop").value}))}catch(e){}}
+    function sync(){if(!$("sszLink").checked)return;var o;try{o=appState()}catch(e){return}var sig=JSON.stringify(o);if(sig===lastSig)return;lastSig=sig;tps=o.tps;
+      if(o.sym&&INST[o.sym]&&$("sszInst").value!==o.sym){$("sszInst").value=o.sym;setPv()}
+      if(o.risk!=null)$("sszRisk").value=o.risk;if(o.entry!=null&&o.stop!=null){$("sszEntry").value=o.entry;$("sszStop").value=o.stop}render()}
+    box.addEventListener("input",function(e){if(e.target.id==="sszInst")setPv();render()});
+    box.addEventListener("change",function(e){if(e.target.id==="sszInst")setPv();if(e.target.id==="sszLink"){lastSig="";sync()}render()});
+    render();sync();setInterval(sync,700);
+  }
+  g.stratSplit=split;g.stratSizePlan=plan;g.stratSizeHTML=html;g.stratSizeText=text;
+  if(typeof document!=="undefined"){if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",function(){setTimeout(mount,150)});else setTimeout(mount,150)}
 })(typeof window!=="undefined"?window:globalThis);
 </script>
 <script>
