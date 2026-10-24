@@ -1,0 +1,167 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Food Check</title><meta name="theme-color" content="#0f1419"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#0f1419;--card:#1a222c;--tx:#e6edf3;--mut:#8b98a5;--g:#2ea043;--a:#d29922;--r:#f85149;--b:#388bfd}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,sans-serif}
+main{max-width:760px;margin:auto;padding:14px}h1{font-size:1.4em;margin:6px 0}h2{font-size:1.1em;margin:0 0 8px}
+.card{background:var(--card);border-radius:12px;padding:14px;margin:12px 0}
+.tabs{display:flex;gap:6px}.tabs button{flex:1}
+button{background:#2d3743;color:var(--tx);border:0;border-radius:8px;padding:11px 12px;font-size:1em;cursor:pointer}
+button.on,button.pri{background:var(--b)}input{width:100%;padding:11px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:var(--tx);font-size:1em}
+.row{display:flex;gap:8px;margin:6px 0}.row>*{flex:1}label{font-size:.85em;color:var(--mut)}
+table{width:100%;border-collapse:collapse}td,th{padding:7px 4px;border-bottom:1px solid #2d3743;text-align:left;font-size:.95em}th{color:var(--mut);font-weight:500}
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.8em;font-weight:600;color:#000}
+.G{background:var(--g)}.A{background:var(--a)}.R{background:var(--r);color:#fff}.N{background:#444;color:#ccc}
+.na{color:var(--mut);font-style:italic}.mut{color:var(--mut);font-size:.85em}.na4{border-left:4px solid var(--r)}
+.hi{border:2px solid var(--r)}.res{cursor:pointer;padding:8px;border-bottom:1px solid #2d3743}.res:hover{background:#222c38}
+.bar{height:10px;background:#0d1117;border-radius:5px;overflow:hidden;margin:4px 0}.bar i{display:block;height:100%}
+.hidden{display:none}#scan{position:fixed;inset:0;background:#000;z-index:9;display:flex;flex-direction:column}#scan video{flex:1;width:100%;object-fit:cover}#scan .box{position:absolute;left:10%;right:10%;top:38%;height:22%;border:3px solid var(--g);border-radius:10px;pointer-events:none}#scan .ctl{display:flex;gap:8px;padding:12px;background:#0f1419}#scan .ctl button{flex:1}small a{color:var(--b)}
+</style></head><body><main>
+<h1>🥫 Food Check</h1><div class="mut">Salt, sugar, starch &amp; processing — sodium highlighted for blood pressure.</div>
+<div class="tabs card" style="padding:8px"><button id="t1" class="on" onclick="tab(1)">Search / Barcode</button><button id="t2" onclick="tab(2)">Manual label</button><button id="t3" onclick="tab(3)">History</button></div>
+
+<section id="p1"><div class="card"><label>Product name or barcode</label>
+<div class="row"><input id="q" placeholder="e.g. 5449000000996 or oreo" onkeydown="if(event.key==='Enter')go()"><button class="pri" style="flex:0 0 90px" onclick="go()">Go</button></div>
+<div class="row"><button class="pri" onclick="startScan()">📷 Scan barcode</button><label style="flex:1;display:block"><span class="hidden">photo</span><input id="photo" type="file" accept="image/*" capture="environment" class="hidden" onchange="scanPhoto(this)"><button style="width:100%" onclick="document.getElementById('photo').click()">🖼️ Scan from photo</button></label></div>
+<div id="msg" class="mut"></div><div id="results"></div></div></section>
+
+<section id="p2" class="hidden"><div class="card"><h2>Type numbers from the Nutrition Facts label</h2>
+<div class="row"><div><label>Food name (optional)</label><input id="mName"></div></div>
+<div class="row"><div><label>Serving size (g or ml)</label><input id="mServ" type="number" inputmode="decimal"></div><div><label>Servings you eat</label><input id="mMult" type="number" inputmode="decimal" value="1"></div></div>
+<div class="row"><div><label>Sodium (mg)</label><input id="mNa" type="number" inputmode="decimal"></div><div><label>Total sugars (g)</label><input id="mSug" type="number" inputmode="decimal"></div></div>
+<div class="row"><div><label>Added sugars (g)</label><input id="mAdd" type="number" inputmode="decimal"></div><div><label>Total carbs (g)</label><input id="mCarb" type="number" inputmode="decimal"></div></div>
+<div class="row"><div><label>Fiber (g)</label><input id="mFib" type="number" inputmode="decimal"></div><div><label>Drink? </label><select id="mDrink" style="width:100%;padding:11px;border-radius:8px;background:#0d1117;color:var(--tx)"><option value="0">Food</option><option value="1">Drink</option></select></div></div>
+<button class="pri" style="width:100%" onclick="manual()">Calculate</button><div class="mut">Leave blank anything not on the label — it will show "not available".</div></div></section>
+
+<section id="p3" class="hidden"><div class="card"><h2>Recent lookups</h2><div id="hist"></div><button onclick="clearHist()">Clear history</button></div></section>
+
+<div id="out"></div>
+
+<div class="card mut"><b>Daily limits used</b><br>
+Sodium: ideal ≤ 1,500 mg/day, max 2,300 mg/day — <small><a href="https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/sodium/how-much-sodium-should-i-eat-per-day" target="_blank">American Heart Association</a></small><br>
+Added sugar (men): ≤ 150 kcal/day ≈ 9 tsp ≈ 36 g — <small><a href="https://www.heart.org/en/healthy-living/healthy-eating/eat-smart/sugar/added-sugars" target="_blank">American Heart Association</a></small><br>
+Traffic lights: UK FSA front-of-pack per 100 g (food) — sugar low ≤5 g, high &gt;22.5 g; salt low ≤0.3 g, high &gt;1.5 g. Per 100 ml (drinks) — sugar low ≤2.5 g, high &gt;11.25 g; salt low ≤0.3 g, high &gt;0.75 g. — <small><a href="https://www.gov.uk/government/publications/front-of-pack-nutrition-labelling-guidance" target="_blank">UK Dept of Health / FSA guidance</a></small><br>
+Processing: NOVA classification. Product data: <small><a href="https://world.openfoodfacts.org" target="_blank">Open Food Facts</a></small> (crowd-sourced; may be incomplete or wrong — check the package).<br>
+<b>Informational only, not medical advice.</b> Follow your doctor's guidance for your blood pressure.</div>
+</main><div id="scan" class="hidden"><video id="vid" playsinline muted></video><div class="box"></div><div id="smsg" class="mut" style="position:absolute;top:10px;left:0;right:0;text-align:center;color:#fff">Point at the barcode</div><div class="ctl"><button id="torch" class="hidden" onclick="toggleTorch()">🔦 Torch</button><button onclick="stopScan()">✖ Cancel</button></div></div>
+<script src="vendor/zxing.min.js"></script>
+<script>
+const LIM={naIdeal:1500,naMax:2300,addSugMen:36};
+const FSA={food:{sug:[5,22.5],salt:[0.3,1.5]},drink:{sug:[2.5,11.25],salt:[0.3,0.75]}};
+const NOVA={1:"Unprocessed or minimally processed (e.g. fresh fruit, plain milk, eggs).",2:"Processed culinary ingredient (e.g. oil, butter, sugar, salt).",3:"Processed food (e.g. canned veg, cheese, simple bread) — a few ingredients added.",4:"Ultra-processed — industrial formulation with additives, flavorings, etc. Best kept occasional."};
+const num=v=>(v===''||v==null||isNaN(+v))?null:+v;
+function light(v,t){if(v==null)return'N';return v<=t[0]?'G':v>t[1]?'R':'A'}
+const LN={G:'LOW',A:'MED',R:'HIGH',N:'n/a'};
+function fmt(v,u,d=1){return v==null?'<span class="na">not available</span>':(+v).toFixed(d).replace(/\.0+$/,'')+' '+u}
+// Core calc: input per100 {salt,sodiumMg,sug,add,carb,fib,starch}, servingG, mult, drink
+function calc(o){
+  const p=o.per100||{},s=o.servingG,m=o.mult||1;
+  // derive salt/sodium from each other (salt g = sodium g * 2.5)
+  if(p.salt==null&&p.sodiumMg!=null)p.salt=p.sodiumMg*2.5/1000;
+  if(p.sodiumMg==null&&p.salt!=null)p.sodiumMg=p.salt/2.5*1000;
+  let starchEst=false;
+  if(p.starch==null&&p.carb!=null&&p.sug!=null&&p.fib!=null){p.starch=Math.max(0,p.carb-p.sug-p.fib);starchEst=true}
+  const per=k=>(p[k]==null||!s)?null:p[k]*s/100*m;
+  const keys=['salt','sodiumMg','sug','add','carb','fib','starch'],serv={};keys.forEach(k=>serv[k]=per(k));
+  // if serving-based values given directly (manual), override
+  if(o.perServ){keys.forEach(k=>{if(o.perServ[k]!=null)serv[k]=o.perServ[k]*m})}
+  const t=o.drink?FSA.drink:FSA.food;
+  return{p,serv,starchEst,lights:{salt:light(p.salt,t.salt),sug:light(p.sug,t.sug)},
+    naPctIdeal:serv.sodiumMg==null?null:serv.sodiumMg/LIM.naIdeal*100,naPctMax:serv.sodiumMg==null?null:serv.sodiumMg/LIM.naMax*100,
+    addPct:serv.add==null?null:serv.add/LIM.addSugMen*100};
+}
+function render(info,r){
+  const p=r.p,s=r.serv,hasS=!!info.servingG,u=info.drink?'100 ml':'100 g';
+  const row=(n,k,unit,d,lt)=>`<tr><td>${n}${lt?` <span class="pill ${r.lights[lt]}">${LN[r.lights[lt]]}</span>`:''}</td><td>${fmt(p[k],unit,d)}</td><td>${hasS||info.manual?fmt(s[k],unit,d):'<span class="na">not available</span>'}</td></tr>`;
+  const bar=(pct,c)=>pct==null?'':`<div class="bar"><i style="width:${Math.min(100,pct)}%;background:${c}"></i></div>`;
+  const naC=r.naPctIdeal==null?'#444':r.naPctIdeal>=33?'var(--r)':r.naPctIdeal>=15?'var(--a)':'var(--g)';
+  let h=`<div class="card"><h2>${esc(info.name||'Food')}</h2><div class="mut">${esc(info.brand||'')} ${info.code?'· '+info.code:''} ${hasS?'· serving '+info.servingG+(info.drink?' ml':' g')+(info.mult&&info.mult!=1?' × '+info.mult:''):'· serving size not given'}</div></div>`;
+  h+=`<div class="card hi"><h2>🧂 Sodium (blood pressure)</h2>`+(s.sodiumMg==null?'<div class="na">Per-serving sodium not available'+(p.sodiumMg!=null?` — per ${u}: ${Math.round(p.sodiumMg)} mg`:'')+'</div>':
+   `<div style="font-size:1.6em;font-weight:700">${Math.round(s.sodiumMg)} mg <span class="mut">per serving eaten</span></div>
+   <div>${r.naPctIdeal.toFixed(0)}% of your ideal 1,500 mg/day · ${r.naPctMax.toFixed(0)}% of 2,300 mg max</div>${bar(r.naPctIdeal,naC)}`)+`</div>`;
+  h+=`<div class="card"><table><tr><th>Nutrient</th><th>Per ${info.manual&&!hasS?'100 (needs serving size)':u}</th><th>Per serving${info.mult&&info.mult!=1?' ×'+info.mult:''}</th></tr>
+  ${row('Salt','salt','g',2,'salt')}${row('Sodium','sodiumMg','mg',0)}${row('Total sugars','sug','g',1,'sug')}${row('Added sugars','add','g',1)}
+  ${row('Total carbs','carb','g',1)}${row('Fiber','fib','g',1)}${row('Starch'+(r.starchEst?' <span class="pill A">estimated</span>':''),'starch','g',1)}</table>
+  ${r.starchEst?'<div class="mut">Starch estimated = carbs − sugars − fiber (not reported on label).</div>':''}
+  ${r.addPct!=null?`<div style="margin-top:8px">Added sugar: ${r.addPct.toFixed(0)}% of 36 g/day limit for men${bar(r.addPct,r.addPct>=50?'var(--r)':r.addPct>=20?'var(--a)':'var(--g)')}</div>`:''}</div>`;
+  if(!info.manual){const n=info.nova;
+   h+=`<div class="card ${n==4?'na4':''}"><h2>🏭 How processed</h2>${n?`<div><span class="pill ${['','G','G','A','R'][n]}">NOVA ${n}</span> ${NOVA[n]}</div>`:'<div class="na">NOVA group not available</div>'}
+   <div style="margin-top:8px"><b>Additives:</b> ${info.additives?info.additives.length+(info.additives.length?' — '+info.additives.map(esc).join(', '):''):'<span class="na">not available</span>'}</div>
+   <div style="margin-top:8px"><b>Ingredients:</b> ${info.ingredients?esc(info.ingredients):'<span class="na">not available</span>'}</div></div>`}
+  document.getElementById('out').innerHTML=h;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function fromOFF(pr,code){
+  const n=pr.nutriments||{},g=k=>num(n[k+'_100g']);
+  const drink=/beverage|drink/i.test((pr.categories_tags||[]).join(' '))||/ml/i.test(pr.serving_size||'')&&/l\b|ml/i.test(pr.quantity||'');
+  let sod=g('sodium');if(sod!=null)sod*=1000;
+  return{info:{name:pr.product_name||'Unnamed product',brand:pr.brands,code,servingG:num(pr.serving_quantity),drink,nova:num(pr.nova_group),
+    additives:pr.additives_tags?pr.additives_tags.map(a=>a.replace(/^en:/,'').toUpperCase()):null,ingredients:pr.ingredients_text_en||pr.ingredients_text||null},
+    per100:{salt:g('salt'),sodiumMg:sod,sug:g('sugars'),add:g('added-sugars'),carb:g('carbohydrates'),fib:g('fiber'),starch:g('starch')}};
+}
+const FIELDS='product_name,brands,nutriments,nova_group,additives_tags,ingredients_text,ingredients_text_en,serving_size,serving_quantity,quantity,categories_tags';
+async function lookup(code){
+  msg('Looking up '+code+'…');
+  try{const j=await (await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`)).json();
+    if(j.status!==1||!j.product){msg('Product not found in Open Food Facts. Try Manual label.');return}
+    const d=fromOFF(j.product,code);d.info.mult=1;render(d.info,calc({per100:d.per100,servingG:d.info.servingG,drink:d.info.drink}));msg('');
+    addHist({code,name:d.info.name,brand:d.info.brand});
+  }catch(e){msg('Could not reach Open Food Facts (offline or service busy). Manual label mode still works.')}
+}
+async function search(q){
+  msg('Searching…');document.getElementById('results').innerHTML='';
+  let hits=null;
+  try{const j=await (await fetch(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=15&fields=code,product_name,brands`)).json();hits=(j.hits||[]).map(h=>({code:h.code,name:h.product_name,brand:[].concat(h.brands||[]).join(', ')}))}catch(e){}
+  if(!hits){try{const j=await (await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&json=1&page_size=15&fields=code,product_name,brands`)).json();hits=(j.products||[]).map(h=>({code:h.code,name:h.product_name,brand:h.brands}))}catch(e){}}
+  if(!hits){msg('Search is unavailable right now (Open Food Facts busy or offline). Try the barcode or Manual label.');return}
+  hits=hits.filter(h=>h.code);msg(hits.length?'Tap a product:':'No matches.');
+  document.getElementById('results').innerHTML=hits.map(h=>`<div class="res" onclick="lookup('${esc(h.code)}')"><b>${esc(h.name||'Unnamed')}</b> <span class="mut">${esc(h.brand||'')} · ${esc(h.code)}</span></div>`).join('');
+}
+function go(){const q=document.getElementById('q').value.trim();if(!q)return;/^\d{6,14}$/.test(q)?lookup(q):search(q)}
+function manual(){const v=id=>num(document.getElementById(id).value);const sv=v('mServ'),m=v('mMult')||1;
+  const ps={sodiumMg:v('mNa'),sug:v('mSug'),add:v('mAdd'),carb:v('mCarb'),fib:v('mFib'),salt:null,starch:null};
+  if(ps.sodiumMg!=null)ps.salt=ps.sodiumMg*2.5/1000;
+  if(ps.carb!=null&&ps.sug!=null&&ps.fib!=null)ps.starch=Math.max(0,ps.carb-ps.sug-ps.fib);
+  const p100={};for(const k in ps)p100[k]=(ps[k]!=null&&sv)?ps[k]/sv*100:null;
+  const r=calc({per100:p100,servingG:sv,mult:m,perServ:ps,drink:v('mDrink')==1});
+  r.starchEst=ps.starch!=null; if(!sv)r.lights={salt:'N',sug:'N'};
+  const name=document.getElementById('mName').value||'Manual entry';
+  render({name,servingG:sv,mult:m,manual:true,drink:v('mDrink')==1},r);addHist({name,manual:true});
+}
+function msg(t){document.getElementById('msg').textContent=t}
+function getHist(){try{return JSON.parse(localStorage.getItem('foodcheck_hist')||'[]')}catch(e){return[]}}
+function addHist(e){let h=getHist().filter(x=>!(e.code&&x.code===e.code));h.unshift({...e,t:Date.now()});localStorage.setItem('foodcheck_hist',JSON.stringify(h.slice(0,30)))}
+function showHist(){const h=getHist();document.getElementById('hist').innerHTML=h.length?h.map(x=>`<div class="res" ${x.code?`onclick="tab(1);lookup('${esc(x.code)}')"`:''}><b>${esc(x.name||'')}</b> <span class="mut">${x.manual?'manual':esc(x.code)} · ${new Date(x.t).toLocaleString()}</span></div>`).join(''):'<div class="na">No lookups yet.</div>'}
+function clearHist(){localStorage.removeItem('foodcheck_hist');showHist()}
+function tab(n){[1,2,3].forEach(i=>{document.getElementById('p'+i).classList.toggle('hidden',i!==n);document.getElementById('t'+i).classList.toggle('on',i===n)});if(n===3)showHist();document.getElementById('out').innerHTML=''}
+// ---- Barcode scanner ----
+const FMTS=['ean_13','ean_8','upc_a','upc_e'];let stream=null,scanTimer=null,torchOn=false,zxReader=null;
+async function getDetector(){if('BarcodeDetector' in window){try{const ok=await BarcodeDetector.getSupportedFormats();const f=FMTS.filter(x=>ok.includes(x));if(f.length)return new BarcodeDetector({formats:f})}catch(e){}}return null}
+function zx(){if(zxReader)return zxReader;if(!window.ZXing)return null;const h=new Map();const F=ZXing.BarcodeFormat;
+  h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);
+  zxReader=new ZXing.MultiFormatReader();zxReader.setHints(h);return zxReader}
+function zxDecodeCanvas(cv){const r=zx();if(!r)return null;try{const src=new ZXing.HTMLCanvasElementLuminanceSource(cv);return r.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(src))).getText()}catch(e){return null}}
+function found(code){if(navigator.vibrate)navigator.vibrate(150);stopScan();tab(1);document.getElementById('q').value=code;lookup(code)}
+async function startScan(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){msg('Camera not available here (needs https). Use "Scan from photo" or type the barcode.');return}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false})}
+  catch(e){msg(e.name==='NotAllowedError'?'Camera permission was denied. Allow camera for this site in Chrome settings (lock icon › Permissions), or use "Scan from photo".':e.name==='NotFoundError'?'No camera found. Use "Scan from photo" or type the barcode.':'Could not open camera: '+e.message);return}
+  document.getElementById('scan').classList.remove('hidden');const v=document.getElementById('vid');v.srcObject=stream;await v.play().catch(()=>{});
+  const tr=stream.getVideoTracks()[0],caps=tr.getCapabilities?tr.getCapabilities():{};document.getElementById('torch').classList.toggle('hidden',!caps.torch);
+  const det=await getDetector();const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
+  document.getElementById('smsg').textContent=det?'Point at the barcode':'Point at the barcode (compatibility scanner)';
+  const tick=async()=>{if(!stream)return;let code=null;
+    try{if(det){const r=await det.detect(v);if(r.length)code=r[0].rawValue}
+      else if(v.videoWidth){cv.width=v.videoWidth;cv.height=v.videoHeight;cx.drawImage(v,0,0);code=zxDecodeCanvas(cv)}}catch(e){}
+    if(code)found(code);else scanTimer=setTimeout(tick,det?150:300)};tick();
+}
+function stopScan(){clearTimeout(scanTimer);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;torchOn=false;document.getElementById('scan').classList.add('hidden')}
+async function toggleTorch(){if(!stream)return;torchOn=!torchOn;try{await stream.getVideoTracks()[0].applyConstraints({advanced:[{torch:torchOn}]})}catch(e){torchOn=false}}
+async function scanPhoto(inp){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;msg('Reading photo…');
+  try{const bmp=await createImageBitmap(f);const det=await getDetector();let code=null;
+    if(det){const r=await det.detect(bmp);if(r.length)code=r[0].rawValue}
+    if(!code){const sc=Math.min(1,1600/Math.max(bmp.width,bmp.height));const cv=document.createElement('canvas');cv.width=bmp.width*sc;cv.height=bmp.height*sc;cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);code=zxDecodeCanvas(cv)}
+    if(code)found(code);else msg('No barcode found in that photo. Try a closer, sharper, well-lit shot.')}catch(e){msg('Could not read that photo.')}}
+if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('sw.js');
+if(typeof module!=='undefined')module.exports={calc,fromOFF,light};
+</script></body></html>
