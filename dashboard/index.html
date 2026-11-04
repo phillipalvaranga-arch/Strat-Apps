@@ -12,20 +12,75 @@ select,input{width:100%;min-height:40px;margin-top:3px;border-radius:8px;border:
 .how{font-size:14px;color:var(--muted)}.how ol{margin:4px 0;padding-left:20px}#size{margin:8px 0 0;font-size:15px}
 .sc-sec{border-top:1px solid var(--line);padding:8px 0}.sc-sec summary{cursor:pointer;font-size:16px;min-height:32px}
 footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
+:root{--go:#1f9d55;--no:#d64545;--wait:#c58a12}
+body{font-size:17px}main{max-width:760px;padding:0 12px 60px}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0 8px;border-bottom:1px solid var(--line)}h1{font-size:22px}h2{font-size:18px;margin:0 0 6px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}.tabs button{min-height:48px;border-radius:10px;border:1px solid var(--line);background:#14244a;color:var(--muted);font:inherit;font-weight:600}
+.tabs button[aria-selected=true]{background:#2f5bd3;color:#fff;border-color:#2f5bd3}
+.btns button{min-height:48px;padding:8px 16px;font-weight:600}.btns .pri{background:#2f5bd3;border-color:#2f5bd3}.btns .dng{border-color:#7a2b2b;color:#ffb3b3}
+select,input{min-height:46px;font-size:16px}textarea{font-size:15px}textarea.sm{min-height:70px}
+.row{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.f-ok{border-color:#2c7a4b!important}.f-miss{border-color:var(--no)!important;background:#2a1318!important}.f-ed{border-color:var(--wait)!important}
+.notes{margin:8px 0 0;padding-left:18px;color:#ffd38a;font-size:14px}
+.vd{border-radius:14px;padding:14px 16px;margin:12px 0;border:2px solid}.vd.go{border-color:var(--go);background:#0f2a1c}.vd.no{border-color:var(--no);background:#2c1216}
+.vd .big{font-size:30px;font-weight:800;letter-spacing:.5px}.vd ul{margin:6px 0 0;padding-left:18px;font-size:15px}
+.lv{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}.lv th,.lv td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:right}.lv th:first-child,.lv td:first-child{text-align:left}
+.lv tr.e td{color:#9cc3ff}.lv tr.s td{color:#ff9c9c}.lv tr.t td:first-child{color:#8fe3a8}.lv .r{font-weight:700}.lv small{color:var(--muted)}
+.jt{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0}.jt .h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.jt .w{color:#8fe3a8}.jt .l{color:#ff9c9c}
+.flag{display:inline-block;background:#3a1418;color:#ffb3b3;border:1px solid #7a2b2b;border-radius:6px;padding:1px 6px;margin:3px 4px 0 0;font-size:13px}
+.jt .act button{min-height:40px;margin:6px 6px 0 0;padding:4px 12px;border-radius:8px;border:1px solid var(--line);background:#1a2a50;color:inherit;font:inherit}
+.dayh{margin:14px 0 4px;font-weight:700}.ok{color:#8fe3a8}.bad{color:#ff9c9c}
+details.panel>summary{min-height:40px;cursor:pointer}
 </style>
 <!-- installable web app --><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b1428"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="icon" type="image/png" sizes="512x512" href="icon-512.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Strat Dash"><script>if("serviceWorker" in navigator){addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{scope:"./"}).catch(function(e){console.warn("SW registration failed",e)})})}</script>
 </head><body><main>
-<h1>Strat Dashboard</h1><p class="sub">One paste → one trade card. Same engine as Strat Chart Reader, Trade Risk Check and Strat Command.</p>
-<section class="panel"><div class="how"><b>How to use:</b><ol><li>In Strat Chart Reader, tap <b>Copy Strat prompt</b>, paste it into Claude with your chart screenshot.</li><li>Paste Claude's whole answer below (or tap <b>Use it here</b> when another app offers its last analysis).</li><li>Read the card. The apps can't see your chart: prices come only from the analysis or your inputs.</li></ol></div>
-<textarea id="dIn" placeholder="Paste Claude's analysis here…"></textarea>
-<div class="row"><label>Instrument (used if the analysis doesn't name one)<select id="dInst"><option>MNQ</option><option>MES</option><option>NQ</option><option>ES</option><option>MGC</option><option>GC</option><option>M2K</option><option>MYM</option></select></label>
+<header class="top"><h1>Strat Dashboard</h1><p class="sub">Paste → trade card → journal. No live data, no orders placed.</p>
+<nav class="tabs" role="tablist"><button type="button" role="tab" data-tab="paste" aria-selected="true">1 · Paste</button><button type="button" role="tab" data-tab="card">2 · Trade card</button><button type="button" role="tab" data-tab="journal">3 · Journal</button></nav></header>
+<div id="tab-paste" class="tab">
+<section class="panel"><details class="how"><summary><b>How to use</b></summary><ol><li>In Strat Chart Reader, tap <b>Copy Strat prompt</b>, paste it into Claude with your chart screenshot.</li><li>Paste Claude's whole answer below (or tap <b>Use it here</b> when another app offers its last analysis).</li><li>Check the <b>Read from your paste</b> box, fix anything wrong or missing, then open the <b>Trade card</b>.</li></ol><p>The app can't see your chart. Prices come only from the analysis or what you type.</p></details>
+<textarea id="pIn" placeholder="Paste Claude's analysis here…"></textarea>
+<textarea id="dIn" hidden aria-hidden="true"></textarea>
+<div class="btns"><button type="button" id="dPaste">Paste from clipboard</button><button type="button" id="dClear">Clear</button><button type="button" id="dLast">Load last analysis</button></div></section>
+<section class="panel" id="fx"><h2>Read from your paste</h2><p class="sub" id="fxSum">Paste an analysis to see what was found.</p>
+<div class="row"><label>Instrument<select id="fSym"><option value="">—</option><option>MNQ</option><option>MES</option><option>NQ</option><option>ES</option><option>MGC</option><option>GC</option><option>M2K</option><option>MYM</option></select></label>
+<label>Timeframe<input id="fTf" placeholder="e.g. 5m"></label>
+<label>Direction<select id="fDir"><option value="">—</option><option value="long">Long</option><option value="short">Short</option></select></label>
+<label>Entry<input id="fEntry" inputmode="decimal"></label><label>Stop<input id="fStop" inputmode="decimal"></label>
+<label>TP1<input id="fT1" inputmode="decimal"></label><label>TP2<input id="fT2" inputmode="decimal"></label><label>TP3<input id="fT3" inputmode="decimal"></label><label>TP4<input id="fT4" inputmode="decimal"></label><label>TP5<input id="fT5" inputmode="decimal"></label></div>
+<ul id="fxNotes" class="notes"></ul>
+<div class="btns"><button type="button" id="fxReset">Re-read paste</button><button type="button" class="pri" id="fxGo">See trade card →</button></div></section>
+<section class="panel"><h2>Size &amp; limits</h2><div class="row"><label>Instrument if the paste has none<select id="dInst"><option>MNQ</option><option>MES</option><option>NQ</option><option>ES</option><option>MGC</option><option>GC</option><option>M2K</option><option>MYM</option></select></label>
 <label>Contracts you plan<input id="dQty" type="number" min="1" step="1" inputmode="numeric" placeholder="Auto (max for risk)"></label>
 <label>Max risk per trade ($)<input id="dRisk" type="number" min="1" step="5" value="200" inputmode="decimal"></label>
-<label>Minimum reward : risk<select id="dMin"><option value="2">2 : 1 (default)</option><option value="1.5">1.5 : 1</option><option value="2.5">2.5 : 1</option><option value="3">3 : 1</option><option value="custom">Custom…</option></select><input id="dMinC" type="number" min="0.5" max="10" step="0.25" inputmode="decimal" placeholder="e.g. 1.75" hidden></label></div>
+<label>Minimum reward : risk<select id="dMin"><option value="2">2 : 1 (default)</option><option value="1.5">1.5 : 1</option><option value="2.5">2.5 : 1</option><option value="3">3 : 1</option><option value="custom">Custom…</option></select><input id="dMinC" type="number" min="0.5" max="10" step="0.25" inputmode="decimal" placeholder="e.g. 1.75" hidden></label></div></section>
+</div>
+<div id="tab-card" class="tab" hidden>
+<section id="dSum" aria-live="polite"><div class="panel sub">Paste an analysis first.</div></section>
 <p id="size" aria-live="polite"></p>
-<div class="btns"><button type="button" id="dClear">Clear</button><button type="button" id="dLast">Load last analysis</button></div></section>
-<section id="dCard" aria-live="polite"></section>
-<footer>For review only — no live data, no orders placed.</footer>
+<div class="btns"><button type="button" class="pri" id="toJournal">Log this trade in Journal</button></div>
+<details class="panel"><summary><b>Full card: structure, rules, suggestions</b></summary><section id="dCard" aria-live="polite"></section></details>
+</div>
+<div id="tab-journal" class="tab" hidden>
+<section class="panel" id="jToday"></section>
+<section class="panel"><h2 id="jFormT">Log a trade</h2>
+<form id="jf" autocomplete="off"><div class="row">
+<label>Date<input name="date" type="date" required></label><label>Time<input name="time" type="time"></label>
+<label>Instrument<select name="inst"><option>MNQ</option><option>MES</option><option>NQ</option><option>ES</option><option>MGC</option><option>GC</option><option>M2K</option><option>MYM</option></select></label>
+<label>Timeframe<input name="tf" placeholder="5m"></label>
+<label>Long / short<select name="dir"><option value="long">Long</option><option value="short">Short</option></select></label>
+<label>Setup<input name="setup" placeholder="2-1-2 up"></label><label>Level<input name="level" placeholder="PDH, demand…"></label>
+<label>FTFC<select name="ftfc"><option value="">—</option><option value="y">Yes</option><option value="n">No</option></select></label>
+<label>Entry<input name="entry" inputmode="decimal"></label><label>Stop<input name="stop" inputmode="decimal"></label><label>Target<input name="target" inputmode="decimal"></label>
+<label>Contracts<input name="qty" type="number" min="1" step="1" inputmode="numeric"></label>
+<label>Exit price<input name="exit" inputmode="decimal" placeholder="or enter result $"></label><label>Result $ (+/-)<input name="result" inputmode="decimal" placeholder="e.g. -84 or 150"></label>
+<label>Rules followed<select name="rules"><option value="">—</option><option value="y">Yes</option><option value="n">No</option></select></label></div>
+<label>Notes<textarea name="notes" class="sm" placeholder="How it went, how you felt"></textarea></label>
+<p id="jCalc" class="sub"></p>
+<div class="btns"><button type="submit" class="pri" id="jSave">Save trade</button><button type="button" id="jFill">Fill from trade card</button><button type="button" id="jNew">New / cancel edit</button></div></form></section>
+<section class="panel"><h2>All trades</h2><div id="jList"></div>
+<div class="btns"><button type="button" id="jCopy">Copy for Trading Journal</button><button type="button" id="jCsv">Export CSV</button><button type="button" id="jWipe" class="dng">Delete all</button></div></section>
+</div>
+<footer>For review only — no live data, no orders placed. v5</footer>
 </main>
 <script id="strat-tf">
 /* STRAT-TF shared extractor v1 (identical in Strat Chart Reader, Strat Command, Trade Risk Check) */
@@ -728,7 +783,188 @@ footer{color:var(--muted);font-size:13px;text-align:center;margin-top:20px}
  stratCardMount({box:"#dIn",target:"#dCard",from:"Strat Dashboard",sections:true,watch:["#dInst","#dRisk","#dQty"],opts:function(){return {inst:$("dInst").value,maxRisk:$("dRisk").value,planQty:$("dQty").value}},
    onQty:function(q){qtyBefore=$("dQty").value;$("dQty").value=q;keep()},restoreQty:function(){if(qtyBefore!=null){$("dQty").value=qtyBefore;qtyBefore=null;keep()}}});
  new MutationObserver(sizeLine).observe($("dCard"),{childList:true,subtree:true});
- $("dClear").onclick=function(){$("dIn").value="";$("dIn").dispatchEvent(new InputEvent("input",{bubbles:true}));$("dIn").focus()};
  $("dLast").onclick=function(){var o=stratHandoff.load();if(o&&o.text)window.__stratCardUse(o.text);else alert("No saved analysis yet on this device. Paste one, or use Copy for other app in another app.")};
 })();
-</script></body></html>
+</script><script id="dx-parse">/* STRAT-DASH paste parser v5: reads instrument, timeframe, direction, entry, stop, TP1-5 from free-form Claude text.
+   Only numbers present in the paste are returned. Nothing is invented. */
+(function(g){
+  var SYMS={MNQ:1,MES:1,NQ:1,ES:1,MGC:1,GC:1,M2K:1,RTY:1,MYM:1,YM:1};
+  function clean(t){return String(t==null?"":t).replace(/\r/g,"").replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'").replace(/[\u2013\u2014\u2212]/g,"-").replace(/\u00a0/g," ")}
+  function prices(s){
+    s=String(s||"").replace(/\([^)]*\b(?:R|pts?|points?|ticks?|rr|r:r|risk|reward)\b[^)]*\)/gi," ")
+      .replace(/\$\s?-?[\d,]+(?:\.\d+)?/g," ")
+      .replace(/\b\d+(?:\.\d+)?\s*(?:R\b|r:r|pts?\b|points?\b|ticks?\b|contracts?\b|cts?\b|lots?\b|%|x\b|min(?:ute)?s?\b|sec|hours?\b|hrs?\b)/gi," ")
+      .replace(/\b\d+(?:\.\d+)?\s*:\s*1\b/g," ").replace(/\b(?:tp|target|t|pt)\s*#?\s*[1-5]\b/gi," ").replace(/\b\d{1,2}:\d{2}\b/g," ").replace(/\b\d{1,2}\s*(?:m|h|d|w)\b/gi," ");
+    var m=s.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g)||[],out=[];
+    m.forEach(function(x){var v=Number(x.replace(/,/g,""));if(isFinite(v)&&v>=100&&out.indexOf(v)<0)out.push(v)});return out}
+  var KW=/(?=\b(?:entry(?:\s*price)?|enter|trigger|buy\s+stop|sell\s+stop|stop[\s-]*loss|stop|sl|invalidation|take[\s-]*profits?\s*#?\s*[1-5]?|targets?\s*#?\s*[1-5]?|tps?\s*#?\s*[1-5]?|pt\s*#?\s*[1-5]|t[1-5]|profit\s+targets?|(?:first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?target)\b)/i;
+  var ORD={first:1,"1st":1,second:2,"2nd":2,third:3,"3rd":3,fourth:4,"4th":4,fifth:5,"5th":5};
+  function parse(text){
+    var t=clean(text),f={sym:null,tf:null,dir:null,entry:null,stop:null,targets:[],notes:[]},tg=[],seen={};
+    /* JSON from Claude, if any */
+    var j=null;try{var rc=g.stratReadClaude?g.stratReadClaude(t):null;j=rc&&rc.json||null}catch(e){}
+    var noJ=t.replace(/\{[\s\S]*?\}/g,function(b){return /"\w+"\s*:/.test(b)?" ":b});
+    var segs=[];noJ.split("\n").forEach(function(raw){var l=raw.replace(/[*_`#>|]+/g," ").replace(/^\s*(?:[-•▪●◦]|\d+[.)])\s+/,"").trim();if(!l)return;
+      l.split(/\s*[,;|]?\s*(?=\b(?:entry|enter|stop[\s-]*loss|sl\b|(?<!\b(?:buy|sell)\s{1,3})stop\b|take[\s-]*profit|targets?\b|tps?\s*#?\s*[1-5]?\b|t[1-5]\b|pt\s*[1-5]\b|invalidation)\b)/i).forEach(function(x){if(x.trim())segs.push(x.trim())})});
+    /* symbol */
+    var sm=t.match(/\b(MNQ|MES|MGC|M2K|MYM|NQ|ES|GC|RTY|YM)(?:1!|[FGHJKMNQUVXZ]\d{1,4})?\b/);
+    if(j&&SYMS[String(j.chart_symbol||j.symbol||"").toUpperCase().replace(/1!$/,"")])f.sym=String(j.chart_symbol||j.symbol).toUpperCase().replace(/1!$/,"");
+    else if(sm)f.sym=sm[1];
+    else if(/micro\s+(?:e-?mini\s+)?nasdaq/i.test(t))f.sym="MNQ";else if(/micro\s+(?:e-?mini\s+)?s&p/i.test(t))f.sym="MES";else if(/micro\s+gold/i.test(t))f.sym="MGC";
+    else if(/\bnasdaq\b|\bnas100\b|\bus100\b/i.test(t)){f.sym="NQ";f.notes.push("Instrument read as NQ from 'Nasdaq'. Change it to MNQ if you trade the micro.")}
+    else if(/\bgold\b|\bxau/i.test(t)){f.sym="GC";f.notes.push("Instrument read as GC from 'gold'. Change it to MGC if you trade the micro.")}
+    else if(/\bs&p\b|\bspx\b|\bus500\b/i.test(t)){f.sym="ES";f.notes.push("Instrument read as ES from 'S&P'. Change it to MES if you trade the micro.")}
+    /* timeframe */
+    f.tf=(g.stratPickTF&&g.stratPickTF(t))||(j&&j.chart_timeframe)||null;if(!f.tf){var tm=t.match(/\b(\d{1,3})\s*(m|min|mins|minute|h|hr|hour|d|day)\b/i);if(tm)f.tf=tm[1]+(/^m/i.test(tm[2])?"m":/^h/i.test(tm[2])?"h":"D")}
+    /* direction: labeled line first, then first long/short word */
+    var dl=t.match(/\b(?:direction|bias|side|trade|position|order)\s*[:=-]\s*\W*(long|buy|bullish|short|sell|bearish)/i)||t.match(/\b(go\s+long|go\s+short|long|short|buy(?!\s*stop)|sell(?!\s*stop)|calls|puts)\b/i);
+    if(j&&(j.side==="long"||j.side==="short"))f.dir=j.side;
+    else if(/\bbuy\s+stop\b/i.test(t)&&!/\bsell\s+stop\b/i.test(t))f.dir="long";
+    else if(/\bsell\s+stop\b/i.test(t)&&!/\bbuy\s+stop\b/i.test(t))f.dir="short";
+    else if(dl)f.dir=/long|buy|bull|call/i.test(dl[1])?"long":"short";
+    /* labeled prices */
+    segs.forEach(function(s){var m,ps;
+      if(/^(?:no\s+|not\s+)/i.test(s))return;
+      if((m=s.match(/^(?:take[\s-]*profit|target|tp|t|pt)\s*#?\s*([1-5])\b(.*)$/i))){ps=prices(m[2]);if(ps.length&&tg[+m[1]-1]==null)tg[+m[1]-1]=ps[0];return}
+      if((m=s.match(/^(first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?target(.*)$/i))){ps=prices(m[2]);if(ps.length&&tg[ORD[m[1].toLowerCase()]-1]==null)tg[ORD[m[1].toLowerCase()]-1]=ps[0];return}
+      if((m=s.match(/^(?:take[\s-]*profits?|targets?|tps?|profit\s+targets?)\b(.*)$/i))){prices(m[1]).forEach(function(v){var k=0;while(tg[k]!=null&&k<5)k++;if(k<5&&tg.indexOf(v)<0)tg[k]=v});return}
+      if((m=s.match(/^(?:stop[\s-]*loss|stop|sl|invalidation)\b(.*)$/i))){ps=prices(m[1]);if(ps.length&&f.stop==null){f.stop=ps[0];if(ps.length>1)f.notes.push("Stop line had more than one price ("+ps.join(" / ")+"). Used the first. Check it.")}return}
+      if((m=s.match(/^(?:entry(?:\s*(?:price|zone))?|enter(?:\s+(?:long|short))?|trigger|(?:buy|sell)\s+stop)\b(.*)$/i))){ps=prices(m[1]);if(ps.length&&f.entry==null){f.entry=ps[0];if(ps.length>1)f.notes.push("Entry was a range ("+ps.join(" - ")+"). Used "+ps[0]+". Change it if you'll enter elsewhere.")}return}
+    });
+    /* inline 'buy stop 21050' / 'long @ 21050' */
+    if(f.entry==null){var im=noJ.match(/\b(?:buy|sell)\s+stop\s*(?:at|@)?\s*([\d,]+(?:\.\d+)?)/i)||noJ.match(/\b(?:long|short|buy|sell)\b[^\n\d]{0,25}(?:@|at)\s*([\d,]+(?:\.\d+)?)/i);if(im){var v=Number(im[1].replace(/,/g,""));if(v>=100)f.entry=v}}
+    /* JSON fills gaps */
+    var N=function(x){var v=Number(String(x==null?"":x).replace(/[,$\s]/g,""));return isFinite(v)&&v>0?v:null};
+    if(j){if(f.entry==null)f.entry=N(j.entry_price);if(f.stop==null)f.stop=N(j.stop_price);for(var k=1;k<=5;k++){var v2=N(j["target"+k+"_price"]);if(v2!=null&&tg[k-1]==null)tg[k-1]=v2}
+      (Array.isArray(j.targets)?j.targets:[]).map(N).forEach(function(v){if(v!=null&&tg.indexOf(v)<0){var q=0;while(tg[q]!=null&&q<5)q++;if(q<5)tg[q]=v}})}
+    if(g.stratTargets&&!tg.filter(function(x){return x!=null}).length)tg=g.stratTargets(t);
+    f.targets=tg.filter(function(v,i){return v!=null&&tg.indexOf(v)===i}).slice(0,5);
+    if(!f.dir&&f.entry&&f.stop&&f.entry!==f.stop)f.dir=f.stop<f.entry?"long":"short";
+    if(f.dir&&f.entry&&f.stop&&((f.dir==="long"&&f.stop>f.entry)||(f.dir==="short"&&f.stop<f.entry)))f.notes.push("Stop is on the wrong side of entry for a "+f.dir+". Check direction, entry and stop.");
+    if(f.dir&&f.entry)f.targets.forEach(function(v,i){if((f.dir==="long"&&v<=f.entry)||(f.dir==="short"&&v>=f.entry))f.notes.push("TP"+(i+1)+" "+v+" is not beyond entry for a "+f.dir+". Check it.")});
+    f.json=j;return f}
+  /* builds the text the shared engine reads, with the fields Phillip confirmed taking priority */
+  function synth(raw,f){
+    var t=clean(raw).replace(/^\s*STRAT-HANDOFF[^\n]*\n/,"");if(!f||f.entry==null)return t;
+    var j=f.json?JSON.parse(JSON.stringify(f.json)):{};["targets","take_profits","tps","target_prices","entry_price","stop_price"].forEach(function(k){delete j[k]});for(var k=1;k<=5;k++){delete j["target"+k+"_price"];delete j["tp"+k]}
+    j._dash="v5";if(f.sym)j.chart_symbol=f.sym;if(f.tf)j.chart_timeframe=f.tf;if(f.dir)j.side=f.dir;j.entry_price=f.entry;if(f.stop!=null)j.stop_price=f.stop;
+    (f.targets||[]).forEach(function(v,i){j["target"+(i+1)+"_price"]=v});
+    var body=t.replace(/"(entry_price|stop_price|targets|take_profits|tps|target_prices|target_?[1-5](?:_price)?|tp_?[1-5]|side|chart_symbol)"(\s*:)/gi,'"_orig_$1"$2')
+      .split("\n").filter(function(l){var s=l.replace(/[*_`#>|]+/g," ").replace(/^\s*(?:[-•▪●◦]|\d+[.)])\s+/,"").trim();return !/^(?:entry|enter|trigger|stop[\s-]*loss|stop|sl|take[\s-]*profit|targets?|tps?\s*#?\s*[1-5]?|t[1-5]|pt\s*[1-5]|(?:first|1st|second|2nd|third|3rd|fourth|4th|fifth|5th)\s+(?:profit\s+)?target)\b/i.test(s)}).join("\n");
+    return (f.tf?"Timeframe: "+f.tf+"\n":"")+JSON.stringify(j)+"\n\n"+body}
+  g.dxParse=parse;g.dxSynth=synth;g.dxPrices=prices;
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="dx-journal">/* STRAT-DASH journal math v5: uses only numbers Phillip entered. */
+(function(g){
+  var PV={MNQ:2,MES:5,NQ:20,ES:50,MGC:10,GC:100,M2K:5,RTY:50,MYM:.5,YM:5};var L={maxRisk:200,dailyLoss:200,maxLosses:2,maxStop:25};
+  var N=function(v){if(v==null||v==="")return null;var n=Number(String(v).replace(/[,$\s]/g,""));return isFinite(n)?n:null};
+  function calc(t){var e=N(t.entry),s=N(t.stop),x=N(t.exit),q=N(t.qty),pv=PV[t.inst]||null,sg=t.dir==="short"?-1:1,o={};
+    o.stopPts=e!=null&&s!=null?Math.abs(e-s):null;o.risk=o.stopPts!=null&&pv&&q?o.stopPts*pv*q:null;
+    o.result=N(t.result);o.resSrc="entered";if(o.result==null&&e!=null&&x!=null&&pv&&q){o.result=(x-e)*sg*pv*q;o.resSrc="from exit"}
+    o.R=o.result!=null&&o.risk?o.result/o.risk:null;var tg=N(t.target);o.planRR=o.stopPts&&tg!=null&&e!=null?((tg-e)*sg)/o.stopPts:null;return o}
+  function days(list){var by={};list.forEach(function(t){(by[t.date]=by[t.date]||[]).push(t)});
+    return Object.keys(by).sort().reverse().map(function(d){var ts=by[d].slice().sort(function(a,b){return (a.time||"").localeCompare(b.time||"")||(a.id-b.id)});
+      var tot=0,w=0,l=0,lossN=0,prev=null,anyRes=false,dayFlags=[];
+      var rows=ts.map(function(t){var c=calc(t),f=[];
+        if(c.risk!=null&&c.risk>L.maxRisk+1e-9)f.push("Risk $"+c.risk.toFixed(0)+" over $"+L.maxRisk+" max");
+        if(c.stopPts!=null&&c.stopPts>L.maxStop+1e-9)f.push("Stop "+c.stopPts+" pts over "+L.maxStop+"-pt max");
+        if(lossN>=L.maxLosses)f.push("Taken after "+L.maxLosses+" losing trades");
+        if(tot<=-L.dailyLoss)f.push("Taken after hitting $"+L.dailyLoss+" daily loss");
+        if(prev&&prev.c.result!=null&&prev.c.result<0&&N(t.qty)!=null&&N(prev.t.qty)!=null&&N(t.qty)>N(prev.t.qty))f.push("Sized up after a loss ("+prev.t.qty+"→"+t.qty+")");
+        if(c.planRR!=null&&c.planRR<2-1e-9)f.push("Planned R:R "+c.planRR.toFixed(2)+" under 2:1");
+        if(t.rules==="n")f.push("You marked rules not followed");
+        if(c.result!=null){anyRes=true;tot+=c.result;if(c.result>0)w++;else if(c.result<0){l++;lossN++}}
+        prev={t:t,c:c};return {t:t,c:c,flags:f}});
+      if(tot<-L.dailyLoss)dayFlags.push("Day loss $"+(-tot).toFixed(0)+" over $"+L.dailyLoss+" max");
+      if(l>L.maxLosses)dayFlags.push(l+" losing trades (max "+L.maxLosses+")");
+      return {date:d,rows:rows,total:anyRes?tot:null,wins:w,losses:l,flags:dayFlags}})}
+  g.dxJ={calc:calc,days:days,PV:PV,LIMITS:L,N:N};
+})(typeof window!=="undefined"?window:globalThis);
+</script>
+<script id="dx-app">(function(){var $=function(i){return document.getElementById(i)},esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+ var N=dxJ.N,PV=dxJ.PV;
+ /* ---------- tabs ---------- */
+ function tab(n){document.querySelectorAll(".tabs button").forEach(function(b){b.setAttribute("aria-selected",b.getAttribute("data-tab")===n?"true":"false")});["paste","card","journal"].forEach(function(x){$("tab-"+x).hidden=x!==n});try{localStorage.setItem("strat-dash-tab",n)}catch(e){}scrollTo(0,0);if(n==="journal")jRender()}
+ document.querySelectorAll(".tabs button").forEach(function(b){b.onclick=function(){tab(b.getAttribute("data-tab"))}});
+ /* ---------- paste -> fields -> engine ---------- */
+ var F=["fSym","fTf","fDir","fEntry","fStop","fT1","fT2","fT3","fT4","fT5"],parsed=null,edited={},raw="",tmr=null;
+ function fmt(v){return v==null?"":String(v)}
+ function fill(p){$("fSym").value=p.sym||"";$("fTf").value=p.tf||"";$("fDir").value=p.dir||"";$("fEntry").value=fmt(p.entry);$("fStop").value=fmt(p.stop);for(var i=0;i<5;i++)$("fT"+(i+1)).value=fmt(p.targets[i])}
+ function fields(){var tg=[];for(var i=1;i<=5;i++){var v=N($("fT"+i).value);if(v!=null&&v>0)tg.push(v)}return {sym:$("fSym").value||null,tf:$("fTf").value.trim()||null,dir:$("fDir").value||null,entry:N($("fEntry").value),stop:N($("fStop").value),targets:tg,json:parsed&&parsed.json}}
+ function marks(){var miss=[],found=[];var nm={fSym:"instrument",fTf:"timeframe",fDir:"direction",fEntry:"entry",fStop:"stop",fT1:"TP1"};
+   F.forEach(function(id){var el=$(id),v=el.value.trim();el.classList.remove("f-ok","f-miss","f-ed");if(!raw.trim())return;if(edited[id])el.classList.add("f-ed");else if(v)el.classList.add("f-ok");else if(nm[id])el.classList.add("f-miss");if(nm[id])(v?found:miss).push(nm[id])});
+   $("fxSum").innerHTML=!raw.trim()?"Paste an analysis to see what was found.":(found.length?'<span class="ok">Found: '+esc(found.join(", "))+'</span>':"")+(miss.length?'<br><span class="bad">Missing: '+esc(miss.join(", "))+' — type it in.</span>':"")+(Object.keys(edited).length?'<br><span style="color:#ffd38a">Edited by you: highlighted in amber.</span>':"");
+   $("fxNotes").innerHTML=(parsed&&parsed.notes||[]).map(function(n){return"<li>"+esc(n)+"</li>"}).join("")}
+ function push(){var f=fields(),t=raw.trim()?dxSynth(raw,f):"";var b=$("dIn");b.value=t;b.dispatchEvent(new InputEvent("input",{bubbles:true}));marks();setTimeout(summary,320)}
+ function reread(){raw=$("pIn").value;edited={};parsed=raw.trim()?dxParse(raw):null;if(parsed){if(!parsed.sym){}fill(parsed)}else fill({targets:[]});push()}
+ $("pIn").addEventListener("input",function(){clearTimeout(tmr);tmr=setTimeout(reread,200)});
+ F.forEach(function(id){var h=function(){edited[id]=1;clearTimeout(tmr);tmr=setTimeout(push,200)};$(id).addEventListener("input",h);$(id).addEventListener("change",h)});
+ $("fxReset").onclick=reread;$("fxGo").onclick=function(){tab("card")};
+ /* handoff "Use it here" writes into the hidden engine box: bring it to the visible one */
+ $("dIn").addEventListener("input",function(){var v=$("dIn").value;if(v&&v.indexOf('"_dash":"v5"')<0&&v!==$("pIn").value){$("pIn").value=v.replace(/^\s*STRAT-HANDOFF[^\n]*\n/,"");reread()}});
+ $("dPaste").onclick=function(){if(navigator.clipboard&&navigator.clipboard.readText)navigator.clipboard.readText().then(function(t){$("pIn").value=t;reread()}).catch(function(){$("pIn").focus();alert("Long-press the box and choose Paste.")});else $("pIn").focus()};
+ $("dClear").onclick=function(){$("pIn").value="";reread();$("pIn").focus()};
+ /* ---------- summary card ---------- */
+ function usd(v){return v==null?"—":(v<0?"-$":"$")+Math.abs(v).toFixed(2)}
+ function px(v,I){return v==null?"—":Number(v).toLocaleString("en-US",{minimumFractionDigits:I&&I<1?2:0,maximumFractionDigits:2})}
+ function summary(){var box=$("dSum"),c=window.__stratCard&&window.__stratCard.card;if(!c||!raw.trim()){box.innerHTML='<div class="panel sub">Paste an analysis first.</div>';return}
+   var go=c.direction!=="NO TRADE",bad=(c.rules&&c.rules.items||[]).filter(function(x){return x.c==="bad"&&!x.hide}).map(function(x){return x.t}),warn=(c.rules&&c.rules.items||[]).filter(function(x){return x.c==="meh"&&!x.hide}).map(function(x){return x.t});
+   var miss=(c.missing||[]).filter(function(m){return!/optional/.test(m)});
+   var h='<div class="vd '+(go?"go":"no")+'"><div class="big">'+(go?"GO · "+esc(c.direction):"NO TRADE")+'</div><div>'+esc(c.sym||"?")+" "+esc(c.tf||"")+(c.symAssumed?" (instrument assumed from settings)":"")+(c.rr!=null?" · TP1 "+c.rr.toFixed(2)+"R (min "+c.minRR+":1)":"")+'</div>';
+   var why=bad.concat(miss.length?["Missing: "+miss.join(", ")]:[]);if(why.length)h+='<ul>'+why.map(function(x){return"<li>✕ "+esc(x)+"</li>"}).join("")+'</ul>';
+   if(warn.length)h+='<ul>'+warn.map(function(x){return"<li>! "+esc(x)+"</li>"}).join("")+'</ul>';h+='</div>';
+   var r=c.risk||{},tp=c.tps||{},q=r.qty||tp.qty;
+   if(c.entry!=null&&c.stop!=null){h+='<div class="panel"><table class="lv"><thead><tr><th>Level</th><th>Price</th><th>Pts</th><th>R</th><th>$/ct</th><th>$ × '+(q||"?")+'</th></tr></thead><tbody>';
+     h+='<tr class="e"><td>Entry</td><td>'+px(c.entry)+'</td><td></td><td></td><td></td><td></td></tr>';
+     h+='<tr class="s"><td>Stop</td><td>'+px(c.stop)+'</td><td>'+(r.pts!=null?"-"+r.pts.toFixed(2):"—")+'</td><td class="r">-1R</td><td>'+usd(r.perC!=null?-r.perC:null)+'</td><td>'+usd(r.perC!=null&&q?-r.perC*q:null)+'</td></tr>';
+     (tp.rows||[]).forEach(function(x){h+='<tr class="t"><td>TP'+x.n+(x.src==="a"?"":"*")+'</td><td>'+px(x.price)+'</td><td>+'+x.pts.toFixed(2)+'</td><td class="r">'+x.r.toFixed(2)+'R</td><td>'+usd(x.perC)+'</td><td>'+usd(x.total)+'</td></tr>'});
+     h+='</tbody></table><p class="sub">'+(q?q+" contract"+(q>1?"s":"")+", risk "+usd(r.total)+" of your $"+r.maxRisk+" max. ":"")+'* = R-multiple only, not a level from your chart. Check the chart for a real level.</p></div>'}
+   box.innerHTML=h}
+ new MutationObserver(function(){clearTimeout(window.__sumT);window.__sumT=setTimeout(summary,50)}).observe($("dCard"),{childList:true,subtree:true});
+ $("toJournal").onclick=function(){tab("journal");fillFromCard()};
+ /* ---------- journal ---------- */
+ var KEY="strat-dash-journal-v1",editId=null;
+ function all(){try{return JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){return[]}}
+ function store(a){try{localStorage.setItem(KEY,JSON.stringify(a))}catch(e){alert("Couldn't save on this device.")}}
+ var jf=$("jf"),FN=["date","time","inst","tf","dir","setup","level","ftfc","entry","stop","target","qty","exit","result","rules","notes"];
+ function today(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+ function now(){var d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}
+ function setForm(t){FN.forEach(function(k){if(jf[k])jf[k].value=t[k]==null?"":t[k]});calcLine()}
+ function getForm(){var t={};FN.forEach(function(k){t[k]=jf[k].value.trim()});return t}
+ function blank(){editId=null;$("jFormT").textContent="Log a trade";$("jSave").textContent="Save trade";setForm({date:today(),time:now(),inst:$("dInst").value,dir:"long"})}
+ function fillFromCard(){var c=window.__stratCard&&window.__stratCard.card;if(!c||c.entry==null){alert("No trade card yet. Paste an analysis first.");return}
+   var S=c.structure||{},rr=c.rules&&c.rules.items||[],ft=rr.filter(function(x){return x.id==="ftfc"})[0];
+   var lvl=(S.levels||[]).map(function(x){return x.label}).filter(Boolean).slice(0,2).join(", ")||S.location||"";
+   editId=null;$("jFormT").textContent="Log a trade";$("jSave").textContent="Save trade";
+   setForm({date:today(),time:now(),inst:c.sym||$("dInst").value,tf:c.tf||"",dir:c.dir||(c.direction==="SELL"?"short":"long"),setup:S.pattern||S.scenario||(S.candles||[]).join("-")||"",level:lvl,ftfc:ft?(ft.c==="ok"?"y":ft.c==="bad"?"n":""):"",entry:c.entry,stop:c.stop,target:c.tps&&c.tps.rows&&c.tps.rows[0]?c.tps.rows[0].price:"",qty:(c.risk&&c.risk.qty)||""})}
+ function calcLine(){var c=dxJ.calc(getForm());$("jCalc").innerHTML=[c.stopPts!=null?"Stop "+c.stopPts+" pts"+(c.stopPts>25?' <span class="bad">(over 25)</span>':""):null,c.risk!=null?"Risk "+usd(c.risk)+(c.risk>200?' <span class="bad">(over $200)</span>':""):null,c.planRR!=null?"Planned "+c.planRR.toFixed(2)+"R":null,c.result!=null?"Result "+usd(c.result)+" ("+c.resSrc+")":null,c.R!=null?c.R.toFixed(2)+"R":null].filter(Boolean).join(" · ")||"Fill entry, stop and contracts to see risk."}
+ jf.addEventListener("input",calcLine);
+ jf.onsubmit=function(e){e.preventDefault();var t=getForm();if(!t.date){alert("Add the date.");return}var a=all();if(editId){a=a.map(function(x){return x.id===editId?Object.assign(t,{id:editId}):x})}else{t.id=Date.now();a.push(t)}store(a);blank();jRender()};
+ $("jFill").onclick=fillFromCard;$("jNew").onclick=blank;
+ function line(r){var t=r.t,c=r.c;return (t.time?t.time+" ":"")+t.inst+(t.tf?" "+t.tf:"")+" "+(t.dir==="short"?"Short":"Long")+(t.setup?" · "+t.setup:"")+(t.level?" @ "+t.level:"")+(t.ftfc?" · FTFC "+(t.ftfc==="y"?"yes":"no"):"")+" | entry "+(t.entry||"?")+", stop "+(t.stop||"?")+(t.target?", target "+t.target:"")+", "+(t.qty||"?")+" ct"+(c.risk!=null?", risk "+usd(c.risk):"")+" | result "+(c.result!=null?usd(c.result)+(c.resSrc==="from exit"?" (exit "+t.exit+")":""):"not entered")+(c.R!=null?", "+c.R.toFixed(2)+"R":"")+(t.rules?" | rules followed: "+(t.rules==="y"?"yes":"no"):"")+(t.notes?" | "+t.notes:"")}
+ function jRender(){var D=dxJ.days(all()),td=today(),d0=D.filter(function(d){return d.date===td})[0];
+   var lim=dxJ.LIMITS;
+   if(d0){var lossLeft=lim.dailyLoss+(d0.total||0);$("jToday").innerHTML='<h2>Today</h2><p><b class="'+((d0.total||0)>=0?"ok":"bad")+'">'+usd(d0.total)+'</b> · '+d0.wins+' win'+(d0.wins===1?"":"s")+', '+d0.losses+' loss'+(d0.losses===1?"":"es")+' · '+d0.rows.length+' trade'+(d0.rows.length===1?"":"s")+'</p><p class="sub">Room left today: '+(d0.losses>=lim.maxLosses||lossLeft<=0?'<span class="bad">STOP. You hit a daily limit.</span>':usd(Math.min(lossLeft,lim.maxRisk))+" max risk on the next trade, "+(lim.maxLosses-d0.losses)+" loss"+(lim.maxLosses-d0.losses===1?"":"es")+" left")+'</p>'+d0.flags.map(function(f){return'<span class="flag">'+esc(f)+'</span>'}).join("")}
+   else $("jToday").innerHTML='<h2>Today</h2><p class="sub">No trades logged today. Limits: $'+lim.maxRisk+' risk/trade, $'+lim.dailyLoss+' daily loss, '+lim.maxLosses+' losing trades, '+lim.maxStop+'-pt stop, no size-up after a loss.</p>';
+   $("jList").innerHTML=D.length?D.map(function(d){return '<div class="dayh">'+esc(d.date)+' · <span class="'+((d.total||0)>=0?"ok":"bad")+'">'+usd(d.total)+'</span> · '+d.wins+'W / '+d.losses+'L</div>'+d.flags.map(function(f){return'<span class="flag">'+esc(f)+'</span>'}).join("")+d.rows.map(function(r){var res=r.c.result;return '<div class="jt"><div class="h"><b>'+esc((r.t.time||"")+" "+r.t.inst+" "+(r.t.dir==="short"?"Short":"Long")+(r.t.setup?" · "+r.t.setup:""))+'</b><b class="'+(res==null?"":res>=0?"w":"l")+'">'+(res==null?"result?":usd(res))+(r.c.R!=null?" · "+r.c.R.toFixed(2)+"R":"")+'</b></div><div class="sub">'+esc(line(r))+'</div>'+r.flags.map(function(f){return'<span class="flag">'+esc(f)+'</span>'}).join("")+'<div class="act"><button type="button" data-ed="'+r.t.id+'">Edit</button><button type="button" data-del="'+r.t.id+'">Delete</button></div></div>'}).join("")}).join(""):'<p class="sub">No trades yet.</p>'}
+ $("jList").onclick=function(e){var b=e.target.closest("button");if(!b)return;var id=+(b.getAttribute("data-ed")||b.getAttribute("data-del"));var a=all();
+   if(b.hasAttribute("data-del")){if(confirm("Delete this trade?")){store(a.filter(function(x){return x.id!==id}));jRender()}return}
+   var t=a.filter(function(x){return x.id===id})[0];if(t){editId=id;setForm(t);$("jFormT").textContent="Edit trade";$("jSave").textContent="Save changes";jf.scrollIntoView({behavior:"smooth"})}};
+ function copyTxt(s){if(navigator.clipboard&&navigator.clipboard.writeText)return navigator.clipboard.writeText(s).catch(function(){fb(s)});fb(s);return Promise.resolve()}
+ function fb(s){var a=document.createElement("textarea");a.value=s;document.body.appendChild(a);a.select();try{document.execCommand("copy")}catch(e){}a.remove()}
+ $("jCopy").onclick=function(){var D=dxJ.days(all());if(!D.length){alert("No trades yet.");return}var pick=D.filter(function(d){return d.date===today()});if(!pick.length)pick=[D[0]];
+   var s=pick.map(function(d){return "Trading Journal — "+d.date+"\nDay total: "+usd(d.total)+" ("+d.wins+"W/"+d.losses+"L, "+d.rows.length+" trades)\n"+d.rows.map(function(r,i){return (i+1)+". "+line(r)+(r.flags.length?"\n   Flags: "+r.flags.join("; "):"")}).join("\n")+(d.flags.length?"\nDay flags: "+d.flags.join("; "):"")}).join("\n\n");
+   var b=$("jCopy");copyTxt(s).then(function(){b.textContent="Copied — paste it to Trading Journal";setTimeout(function(){b.textContent="Copy for Trading Journal"},2500)})};
+ $("jCsv").onclick=function(){var a=all();if(!a.length){alert("No trades yet.");return}var H=FN.concat(["stop_pts","risk_usd","result_usd","r_multiple","flags"]);var fl={};dxJ.days(a).forEach(function(d){d.rows.forEach(function(r){fl[r.t.id]=r})});
+   var q=function(v){v=v==null?"":String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+   var rows=a.slice().sort(function(x,y){return (x.date+x.time).localeCompare(y.date+y.time)}).map(function(t){var r=fl[t.id],c=r.c;return FN.map(function(k){return q(t[k])}).concat([c.stopPts,c.risk!=null?c.risk.toFixed(2):"",c.result!=null?c.result.toFixed(2):"",c.R!=null?c.R.toFixed(2):"",q(r.flags.join("; "))]).join(",")});
+   var blob=new Blob([H.join(",")+"\n"+rows.join("\n")],{type:"text/csv"}),u=URL.createObjectURL(blob),l=document.createElement("a");l.href=u;l.download="strat-journal-"+today()+".csv";document.body.appendChild(l);l.click();setTimeout(function(){URL.revokeObjectURL(u);l.remove()},1000)};
+ $("jWipe").onclick=function(){if(confirm("Delete ALL logged trades on this device? Export CSV first if you want a copy.")){store([]);jRender()}};
+ blank();jRender();
+ setTimeout(function(){var hb=document.querySelector(".sc-hand");if(hb)$("pIn").parentNode.insertBefore(hb,$("pIn"))},0);
+ setTimeout(function(){var d=$("dIn").value;if(d&&!$("pIn").value){$("pIn").value=d;reread()}},400);
+ try{var lt=localStorage.getItem("strat-dash-tab");if(lt&&lt!=="paste")tab(lt)}catch(e){}
+})();
+</script>
+</body></html>
