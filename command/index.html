@@ -967,4 +967,23 @@ details.panel>summary{min-height:40px;cursor:pointer}
  try{var lt=localStorage.getItem("strat-cmd-tab");if(lt&&lt!=="paste")tab(lt)}catch(e){}
 })();
 </script>
+<style id="kb-css">.kb{font-weight:800!important}tr.kb td{font-weight:800;font-size:1.08em}b.kb{font-size:1.06em}
+#fSym,#fEntry,#fStop,#fT1,#fT2,#fT3,#fT4,#fT5{font-weight:800!important;font-size:1.06em}
+label[for=fSym],label[for=fEntry],label[for=fStop],label[for^=fT]{font-weight:800}</style>
+<script id="kb-js">(function(){
+var ROW=/^\s*(Entry|Stop( loss)?|SL|TP\d\*?|Target ?\d?)\s*$/i,
+TOK=/\b(MNQ|MES|MGC|NQ|ES|GC)\b|\b(entry|stop(?: loss)?|target|TP\d\*?)\b(\s*[:@]?\s*)(\d+(?:,\d{3})*(?:\.\d+)?)(?![\d.])/gi;
+function wrap(root){
+ root.querySelectorAll("tr:not(.kb)").forEach(function(tr){var c=tr.cells&&tr.cells[0];if(c&&ROW.test(c.textContent))tr.classList.add("kb")});
+ var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null),n,L=[];
+ while(n=w.nextNode()){var p=n.parentNode;if(!p||p.closest("b.kb,tr.kb,textarea,input,script,style,button"))continue;TOK.lastIndex=0;if(TOK.test(n.nodeValue))L.push(n)}
+ L.forEach(function(n){var s=n.nodeValue,f=document.createDocumentFragment(),i=0,m;TOK.lastIndex=0;
+  while(m=TOK.exec(s)){f.appendChild(document.createTextNode(s.slice(i,m.index)));var b=document.createElement("b");b.className="kb";b.textContent=m[0];f.appendChild(b);i=TOK.lastIndex}
+  f.appendChild(document.createTextNode(s.slice(i)));n.parentNode.replaceChild(f,n)});
+}
+var busy=0;function run(){if(busy)return;busy=1;try{["dSum","dCard","jList","jToday"].forEach(function(id){var e=document.getElementById(id);e&&wrap(e)})}finally{busy=0}}
+var t;new MutationObserver(function(){clearTimeout(t);t=setTimeout(run,30)}).observe(document.body,{childList:true,subtree:true,characterData:true});
+document.addEventListener("DOMContentLoaded",run);
+document.querySelectorAll("label").forEach(function(l){var x=l.querySelector("#fSym,#fEntry,#fStop,[id^=fT]");if(x)l.classList.add("kb")});
+})();</script>
 </body></html>
